@@ -1,0 +1,38 @@
+openapi: 3.1.0
+info: {title: NXTutors Website Integration Gateway, version: 1.0.0}
+servers:
+  - url: https://website.internal.example.invalid/internal/api/v1/demo-command-center
+security: [{serviceAuth: []}]
+paths:
+  /tutors/candidates:
+    get:
+      operationId: listTutorCandidates
+      parameters:
+        - {name: requirement_ref, in: query, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Normalized candidates; availability may be unknown}
+  /plans/{plan_id}/quote:
+    get:
+      operationId: getPlanQuote
+      parameters:
+        - {name: plan_id, in: path, required: true, schema: {type: string}}
+        - {name: user_ref, in: query, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Authoritative versioned quote}
+  /subscriptions/activations:
+    post:
+      operationId: activateSubscription
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '200': {description: Existing or newly applied activation}
+        '409': {description: Idempotency key reused with different binding}
+components:
+  securitySchemes:
+    serviceAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 255}

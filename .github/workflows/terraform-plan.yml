@@ -1,0 +1,47 @@
+name: Terraform Plan
+on:
+  pull_request:
+    paths: ['infra/terraform/**', '.github/workflows/terraform-plan.yml']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected environment variables to use
+        type: choice
+        options: [dev, staging, prod]
+        default: dev
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment || 'dev' }}
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_environment: ${{ inputs.environment || 'dev' }}
+      TF_VAR_tags: ${{ vars.COST_TAGS_JSON }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with: {terraform_version: 1.15.2}
+      - name: Configure AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Format and validate
+        run: |
+          terraform -chdir=infra/terraform fmt -check -recursive
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+      - name: Plan without secrets
+        run: terraform -chdir=infra/terraform plan -input=false -out=tfplan
+      - name: Render redacted plan
+        run: terraform -chdir=infra/terraform show -no-color tfplan > terraform-plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ inputs.environment || 'dev' }}
+          path: infra/terraform/terraform-plan.txt
+          retention-days: 7

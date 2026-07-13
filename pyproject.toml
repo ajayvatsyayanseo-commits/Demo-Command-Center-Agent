@@ -1,0 +1,107 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "demo-command-center-agent"
+version = "0.1.0"
+description = "NXTutors demo lifecycle modular monolith"
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+license = { text = "Proprietary" }
+dependencies = [
+  "alembic==1.14.0",
+  "asyncpg==0.30.0",
+  "boto3==1.35.90",
+  "cryptography==44.0.0",
+  "fastapi==0.115.6",
+  "google-api-python-client==2.157.0",
+  "google-auth==2.37.0",
+  "httpx==0.28.1",
+  "openai==1.59.3",
+  "opentelemetry-api==1.29.0",
+  "opentelemetry-instrumentation-fastapi==0.50b0",
+  "opentelemetry-sdk==1.29.0",
+  "pydantic==2.10.4",
+  "pydantic-settings==2.7.0",
+  "redis==5.2.1",
+  "sqlalchemy==2.0.36",
+  "structlog==24.4.0",
+  "tzdata==2025.2",
+  "uvicorn[standard]==0.34.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis==6.122.3",
+  "jsonschema==4.23.0",
+  "locust==2.32.5",
+  "mypy==1.14.1",
+  "pip-audit==2.7.3",
+  "pre-commit==4.0.1",
+  "pytest==8.3.4",
+  "pytest-asyncio==0.25.2",
+  "pytest-cov==6.0.0",
+  "pyyaml==6.0.2",
+  "ruff==0.9.1",
+  "testcontainers[postgres,redis]==4.9.1",
+  "types-boto3==1.35.90",
+  "types-pyyaml==6.0.12.20241230",
+]
+
+[project.scripts]
+demo-command-doctor = "demo_command_center.cli.doctor:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/demo_command_center"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC", "S", "T20", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+"src/demo_command_center/api/**" = ["B008"]
+"src/demo_command_center/cli/**" = ["T20"]
+"scripts/**" = ["T20"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
+mypy_path = "src"
+exclude = ["migrations"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers -ra"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "integration: requires local dependency containers",
+  "contract: validates a versioned external contract",
+  "security: exercises a security invariant",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["demo_command_center"]
+omit = [
+  "*/modules/demo_core/ports/*",
+  "*/cli/replay_event.py",
+  "*/cli/redrive_dlq.py",
+  "*/cli/reconcile_payments.py",
+  "*/cli/evaluate_drift.py",
+  "*/cli/retention_cleanup.py",
+  "*/workers/__main__.py",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

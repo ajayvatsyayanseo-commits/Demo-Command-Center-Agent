@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.nxtutors.internal/demo-command-center/events/whatsapp-handoff-demo.v1.schema.json",
+  "title": "whatsapp.handoff.demo.v1 payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider_message_ref", "intent", "lead_ref", "user_ref", "message", "service_window", "consent_refs"],
+  "properties": {
+    "provider_message_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "intent": {"const": "demo_request"},
+    "lead_ref": {"type": ["string", "null"], "maxLength": 255},
+    "user_ref": {"type": ["string", "null"], "maxLength": 255},
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": {"enum": ["text", "interactive", "unknown"]},
+        "text": {"type": ["string", "null"], "maxLength": 4096}
+      }
+    },
+    "service_window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last_user_message_at", "expires_at"],
+      "properties": {
+        "last_user_message_at": {"type": "string", "format": "date-time"},
+        "expires_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "consent_refs": {"type": "array", "items": {"type": "string", "maxLength": 255}, "maxItems": 20}
+  }
+}

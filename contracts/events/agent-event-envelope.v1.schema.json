@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.nxtutors.internal/demo-command-center/events/agent-event-envelope.v1.schema.json",
+  "title": "NXTutors Agent Event Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id", "event_type", "schema_version", "occurred_at", "source_agent",
+    "target_agent", "tenant_id", "region_id", "correlation_id", "causation_id",
+    "conversation_id", "actor", "subject", "idempotency_key", "traceparent",
+    "pii_classification", "payload"
+  ],
+  "properties": {
+    "event_id": {"type": "string", "format": "uuid"},
+    "event_type": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]+\\.v[1-9][0-9]*$"},
+    "schema_version": {"const": "1.0"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "source_agent": {"type": "string", "minLength": 1, "maxLength": 100},
+    "target_agent": {"type": "string", "minLength": 1, "maxLength": 100},
+    "tenant_id": {"type": "string", "minLength": 1, "maxLength": 100},
+    "region_id": {"type": ["string", "null"], "maxLength": 100},
+    "correlation_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "causation_id": {"type": ["string", "null"], "maxLength": 128},
+    "conversation_id": {"type": "string", "minLength": 1, "maxLength": 255},
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": {"enum": ["user", "tutor", "admin", "system", "provider"]},
+        "id": {"type": "string", "minLength": 1, "maxLength": 255}
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lead_id", "user_id", "tutor_id", "demo_id"],
+      "properties": {
+        "lead_id": {"type": ["string", "null"], "maxLength": 255},
+        "user_id": {"type": ["string", "null"], "maxLength": 255},
+        "tutor_id": {"type": ["string", "null"], "maxLength": 255},
+        "demo_id": {"type": ["string", "null"], "maxLength": 255}
+      }
+    },
+    "idempotency_key": {"type": "string", "minLength": 8, "maxLength": 255},
+    "traceparent": {"type": ["string", "null"], "maxLength": 256},
+    "pii_classification": {"enum": ["none", "low", "restricted"]},
+    "payload": {"type": "object"}
+  }
+}

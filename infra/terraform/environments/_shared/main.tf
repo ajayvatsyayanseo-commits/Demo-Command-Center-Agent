@@ -1,0 +1,85 @@
+variable "config" {
+  description = "Environment configuration object. Values are validated by the platform module."
+  type        = any
+}
+
+module "platform" {
+  source = "../.."
+
+  aws_region                             = var.config.aws_region
+  environment                            = var.config.environment
+  service_name                           = var.config.service_name
+  tags                                   = var.config.tags
+  vpc_cidr                               = var.config.vpc_cidr
+  availability_zones                     = var.config.availability_zones
+  nat_gateway_mode                       = var.config.nat_gateway_mode
+  interface_endpoint_services            = var.config.interface_endpoint_services
+  domain_name                            = var.config.domain_name
+  hosted_zone_id                         = var.config.hosted_zone_id
+  image_digest_uri                       = var.config.image_digest_uri
+  runtime_secrets                        = var.config.runtime_secrets
+  container_environment                  = var.config.container_environment
+  bucket_names                           = var.config.bucket_names
+  queue_names                            = var.config.queue_names
+  kms_deletion_window_days               = var.config.kms_deletion_window_days
+  secret_recovery_window_days            = var.config.secret_recovery_window_days
+  s3_noncurrent_expiration_days          = var.config.s3_noncurrent_expiration_days
+  ecr_untagged_retention_days            = var.config.ecr_untagged_retention_days
+  ecr_tagged_image_count                 = var.config.ecr_tagged_image_count
+  aurora_engine_version                  = var.config.aurora_engine_version
+  aurora_capacity_mode                   = var.config.aurora_capacity_mode
+  aurora_instance_class                  = var.config.aurora_instance_class
+  aurora_instance_count                  = var.config.aurora_instance_count
+  aurora_min_acu                         = var.config.aurora_min_acu
+  aurora_max_acu                         = var.config.aurora_max_acu
+  backup_retention_days                  = var.config.backup_retention_days
+  deletion_protection                    = var.config.deletion_protection
+  performance_insights_enabled           = var.config.performance_insights_enabled
+  performance_insights_retention_days    = var.config.performance_insights_retention_days
+  rds_proxy_idle_timeout_seconds         = var.config.rds_proxy_idle_timeout_seconds
+  rds_proxy_max_connections_percent      = var.config.rds_proxy_max_connections_percent
+  rds_proxy_max_idle_connections_percent = var.config.rds_proxy_max_idle_connections_percent
+  redis_node_type                        = var.config.redis_node_type
+  redis_replicas                         = var.config.redis_replicas
+  redis_snapshot_retention_days          = var.config.redis_snapshot_retention_days
+  redis_automatic_failover_enabled       = var.config.redis_automatic_failover_enabled
+  sqs_visibility_timeout_seconds         = var.config.sqs_visibility_timeout_seconds
+  sqs_message_retention_seconds          = var.config.sqs_message_retention_seconds
+  sqs_max_receive_count                  = var.config.sqs_max_receive_count
+  ecs_cpu                                = var.config.ecs_cpu
+  ecs_memory                             = var.config.ecs_memory
+  api_desired_count                      = var.config.api_desired_count
+  worker_desired_count                   = var.config.worker_desired_count
+  api_min_capacity                       = var.config.api_min_capacity
+  api_max_capacity                       = var.config.api_max_capacity
+  worker_min_capacity                    = var.config.worker_min_capacity
+  worker_max_capacity                    = var.config.worker_max_capacity
+  autoscaling_cpu_target                 = var.config.autoscaling_cpu_target
+  worker_queue_depth_target              = var.config.worker_queue_depth_target
+  worker_queue_age_threshold_seconds     = var.config.worker_queue_age_threshold_seconds
+  scale_in_cooldown_seconds              = var.config.scale_in_cooldown_seconds
+  scale_out_cooldown_seconds             = var.config.scale_out_cooldown_seconds
+  enable_execute_command                 = var.config.enable_execute_command
+  waf_rate_limit                         = var.config.waf_rate_limit
+  log_retention_days                     = var.config.log_retention_days
+  queue_age_alarm_threshold_seconds      = var.config.queue_age_alarm_threshold_seconds
+  queue_depth_alarm_threshold            = var.config.queue_depth_alarm_threshold
+  queue_alarm_evaluation_periods         = var.config.queue_alarm_evaluation_periods
+  queue_alarm_period_seconds             = var.config.queue_alarm_period_seconds
+  application_error_threshold            = var.config.application_error_threshold
+  signature_failure_threshold            = var.config.signature_failure_threshold
+  provider_failure_threshold             = var.config.provider_failure_threshold
+  payment_reconciliation_threshold       = var.config.payment_reconciliation_threshold
+  athena_bytes_scanned_cutoff            = var.config.athena_bytes_scanned_cutoff
+  ses_sending_enabled                    = var.config.ses_sending_enabled
+  ses_identity_arns                      = var.config.ses_identity_arns
+  scheduled_jobs_enabled                 = var.config.scheduled_jobs_enabled
+  evaluation_schedule_expression         = var.config.evaluation_schedule_expression
+  reconciliation_schedule_expression     = var.config.reconciliation_schedule_expression
+  retention_schedule_expression          = var.config.retention_schedule_expression
+}
+
+output "platform" {
+  value     = module.platform
+  sensitive = true
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Normalized verified Cashfree payment event v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["provider_event_id", "provider_order_id", "provider_payment_id", "event_type", "status", "amount_minor", "currency", "occurred_at", "raw_body_hash"],
+  "properties": {
+    "provider_event_id": {"type": "string"},
+    "provider_order_id": {"type": "string"},
+    "provider_payment_id": {"type": ["string", "null"]},
+    "event_type": {"type": "string"},
+    "status": {"type": "string"},
+    "amount_minor": {"type": "integer", "minimum": 0},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "raw_body_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

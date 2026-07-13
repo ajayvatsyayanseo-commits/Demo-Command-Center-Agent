@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Onboarding handoff acknowledgement payload v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["onboarding_ref", "status", "flow_version", "failure"],
+  "properties": {
+    "onboarding_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "status": {"enum": ["accepted", "completed", "failed"]},
+    "flow_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "failure": {
+      "type": ["object", "null"],
+      "properties": {"code": {"type": "string"}, "retryable": {"type": "boolean"}},
+      "required": ["code", "retryable"],
+      "additionalProperties": false
+    }
+  }
+}

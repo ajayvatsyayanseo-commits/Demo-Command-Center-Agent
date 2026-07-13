@@ -1,0 +1,5 @@
+* @nxtutors/platform
+/contracts/ @nxtutors/platform @nxtutors/security
+/infra/ @nxtutors/platform @nxtutors/cloud
+/src/demo_command_center/modules/paid_transition/ @nxtutors/platform @nxtutors/finance
+/src/demo_command_center/security/ @nxtutors/security

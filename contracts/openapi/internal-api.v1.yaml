@@ -1,0 +1,94 @@
+openapi: 3.1.0
+info:
+  title: NXTutors Demo Command Center Internal API
+  version: 1.0.0
+servers:
+  - url: https://demo-command-center.internal.example.invalid
+paths:
+  /health/live:
+    get:
+      operationId: live
+      responses:
+        '200': {description: Process is live}
+  /health/ready:
+    get:
+      operationId: ready
+      responses:
+        '200': {description: Ready for traffic}
+        '503': {description: Not ready}
+  /health/dependencies:
+    get:
+      operationId: dependencyStatus
+      responses:
+        '200': {description: Redacted dependency status}
+  /v1/internal/events:
+    post:
+      operationId: ingestEvent
+      security: [{internalSecret: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgentEventEnvelope'}
+      responses:
+        '202': {$ref: '#/components/responses/Accepted'}
+        '401': {description: Authentication failed}
+        '422': {description: Schema validation failed}
+        '503': {description: Durable ingress unavailable}
+  /v1/internal/whatsapp/handoffs:
+    post:
+      operationId: ingestWhatsAppHandoff
+      security: [{internalSecret: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AgentEventEnvelope'}
+      responses:
+        '202': {$ref: '#/components/responses/Accepted'}
+        '401': {description: Authentication failed}
+        '422': {description: Schema or event type validation failed}
+        '503': {description: Durable ingress unavailable}
+components:
+  securitySchemes:
+    internalSecret:
+      type: apiKey
+      in: header
+      name: X-NXTutors-Internal-Secret
+      description: Compatibility only; migrate to signed JWT/HMAC with key ID and replay protection.
+  schemas:
+    AgentEventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [event_id, event_type, schema_version, occurred_at, source_agent, target_agent, tenant_id, region_id, correlation_id, causation_id, conversation_id, actor, subject, idempotency_key, traceparent, pii_classification, payload]
+      properties:
+        event_id: {type: string, format: uuid}
+        event_type: {type: string, pattern: '^[a-z][a-z0-9_.-]+\.v[1-9][0-9]*$'}
+        schema_version: {type: string, const: '1.0'}
+        occurred_at: {type: string, format: date-time}
+        source_agent: {type: string}
+        target_agent: {type: string}
+        tenant_id: {type: string}
+        region_id: {type: [string, 'null']}
+        correlation_id: {type: string}
+        causation_id: {type: [string, 'null']}
+        conversation_id: {type: string}
+        actor: {type: object}
+        subject: {type: object}
+        idempotency_key: {type: string}
+        traceparent: {type: [string, 'null']}
+        pii_classification: {enum: [none, low, restricted]}
+        payload: {type: object}
+    IngressReceipt:
+      type: object
+      required: [event_id, status, correlation_id]
+      properties:
+        event_id: {type: string, format: uuid}
+        status: {enum: [accepted, duplicate]}
+        correlation_id: {type: string}
+  responses:
+    Accepted:
+      description: Event durably accepted or already present
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/IngressReceipt'}

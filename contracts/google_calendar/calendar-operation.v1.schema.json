@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Google Calendar demo operation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["operation_id", "demo_ref", "session_version", "calendar_ref", "starts_at", "ends_at", "timezone", "conference_request_id", "attendee_refs"],
+  "properties": {
+    "operation_id": {"type": "string"},
+    "demo_ref": {"type": "string"},
+    "session_version": {"type": "integer", "minimum": 1},
+    "calendar_ref": {"type": "string"},
+    "starts_at": {"type": "string", "format": "date-time"},
+    "ends_at": {"type": "string", "format": "date-time"},
+    "timezone": {"type": "string"},
+    "conference_request_id": {"type": "string"},
+    "attendee_refs": {"type": "array", "items": {"type": "string"}, "maxItems": 10}
+  }
+}

@@ -1,0 +1,127 @@
+# Copy to a protected *.tfvars file and replace every REPLACE_WITH_* value before planning.
+# Secret VALUES never belong here; runtime_secrets contains empty Secrets Manager container names only.
+config = {
+  aws_region   = "ap-south-1"
+  environment  = "dev"
+  service_name = "demo-command-center"
+  tags = {
+    Owner              = "REPLACE_WITH_OWNER"
+    CostCenter         = "REPLACE_WITH_COST_CENTER"
+    DataClassification = "confidential"
+  }
+
+  vpc_cidr                    = "10.70.0.0/16"
+  availability_zones           = ["ap-south-1a", "ap-south-1b"]
+  nat_gateway_mode             = "single"
+  interface_endpoint_services  = ["ecr.api", "ecr.dkr", "logs", "secretsmanager", "sqs", "kms"]
+  domain_name                  = "dev-demo.example.invalid"
+  hosted_zone_id               = "REPLACE_WITH_HOSTED_ZONE_ID"
+  image_digest_uri             = "replace-with-registry/demo-command-center@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+  runtime_secrets = {
+    DATABASE_URL = "/nxtutors/demo-command-center/dev/database-url"
+    REDIS_URL = "/nxtutors/demo-command-center/dev/redis-url"
+    INTERNAL_JWT_PRIVATE_KEY = "/nxtutors/demo-command-center/dev/internal-jwt-private-key"
+    INTERNAL_HMAC_CURRENT_KEY = "/nxtutors/demo-command-center/dev/internal-hmac-current-key"
+    INTERNAL_HMAC_PREVIOUS_KEY = "/nxtutors/demo-command-center/dev/internal-hmac-previous-key"
+    LEAD_INTAKE_SHARED_SECRET = "/nxtutors/demo-command-center/dev/lead-intake-shared-secret"
+    ONBOARDING_AGENT_SHARED_SECRET = "/nxtutors/demo-command-center/dev/onboarding-agent-shared-secret"
+    NXTUTORS_WEBSITE_SHARED_SECRET = "/nxtutors/demo-command-center/dev/nxtutors-website-shared-secret"
+    META_WHATSAPP_ACCESS_TOKEN = "/nxtutors/demo-command-center/dev/meta-whatsapp-access-token"
+    META_WHATSAPP_APP_SECRET = "/nxtutors/demo-command-center/dev/meta-whatsapp-app-secret"
+    META_WHATSAPP_VERIFY_TOKEN = "/nxtutors/demo-command-center/dev/meta-whatsapp-verify-token"
+    CASHFREE_APP_ID = "/nxtutors/demo-command-center/dev/cashfree-app-id"
+    CASHFREE_SECRET_KEY = "/nxtutors/demo-command-center/dev/cashfree-secret-key"
+    OPENAI_API_KEY = "/nxtutors/demo-command-center/dev/openai-api-key"
+  }
+  container_environment = {
+    APP_VERSION                         = "REPLACE_WITH_RELEASE_VERSION"
+    PUBLIC_BASE_URL                     = "https://dev-demo.example.invalid"
+    INTERNAL_BASE_URL                   = "https://dev-demo.example.invalid"
+    DEFAULT_TIMEZONE                    = "REPLACE_WITH_APPROVED_TIMEZONE"
+    TENANT_ID                           = "REPLACE_WITH_TENANT_ID"
+    AWS_SECRETS_PREFIX                  = "/nxtutors/demo-command-center/dev"
+    LEAD_INTAKE_BASE_URL                = "https://lead-intake.example.invalid"
+    ONBOARDING_AGENT_BASE_URL           = "https://onboarding.example.invalid"
+    OUTBOUND_MESSAGE_GATEWAY_BASE_URL   = "https://lead-intake.example.invalid"
+    NXTUTORS_WEBSITE_INTERNAL_BASE_URL  = "https://website-internal.example.invalid"
+    META_DIRECT_WEBHOOK_ENABLED         = "false"
+    META_OUTBOUND_ENABLED               = "false"
+    DEMO_COMMAND_CENTER_ENABLED         = "false"
+    DEMO_SCHEDULING_ENABLED             = "false"
+    DEMO_PAYMENTS_ENABLED               = "false"
+    DEMO_OUTBOUND_PAUSED                = "true"
+    DEMO_NEW_BOOKINGS_PAUSED            = "true"
+  }
+  bucket_names = {
+    analytics = "replace-with-unique-dev-analytics-bucket"
+    models    = "replace-with-unique-dev-models-bucket"
+    athena    = "replace-with-unique-dev-athena-bucket"
+    alb_logs  = "replace-with-unique-dev-alb-logs-bucket"
+  }
+  queue_names = ["inbound", "scheduling", "outbound", "reminders", "payments", "analytics", "model-evaluation", "human-handoff"]
+
+  kms_deletion_window_days       = 30
+  secret_recovery_window_days    = 7
+  s3_noncurrent_expiration_days  = 30
+  ecr_untagged_retention_days    = 14
+  ecr_tagged_image_count         = 30
+
+  aurora_engine_version                    = "REPLACE_WITH_APPROVED_AURORA_POSTGRES_VERSION"
+  aurora_capacity_mode                     = "serverless_v2"
+  aurora_instance_class                    = "db.r7g.large"
+  aurora_instance_count                    = 1
+  aurora_min_acu                           = 0.5
+  aurora_max_acu                           = 2
+  backup_retention_days                    = 3
+  deletion_protection                      = false
+  performance_insights_enabled             = false
+  performance_insights_retention_days      = 7
+  rds_proxy_idle_timeout_seconds           = 1800
+  rds_proxy_max_connections_percent        = 80
+  rds_proxy_max_idle_connections_percent   = 40
+
+  redis_node_type                    = "cache.t4g.micro"
+  redis_replicas                     = 0
+  redis_snapshot_retention_days      = 1
+  redis_automatic_failover_enabled   = false
+
+  sqs_visibility_timeout_seconds = 180
+  sqs_message_retention_seconds  = 1209600
+  sqs_max_receive_count          = 5
+
+  ecs_cpu                              = 512
+  ecs_memory                           = 1024
+  api_desired_count                    = 1
+  worker_desired_count                 = 1
+  api_min_capacity                     = 1
+  api_max_capacity                     = 2
+  worker_min_capacity                  = 1
+  worker_max_capacity                  = 3
+  autoscaling_cpu_target               = 60
+  worker_queue_depth_target            = 20
+  worker_queue_age_threshold_seconds   = 120
+  scale_in_cooldown_seconds            = 300
+  scale_out_cooldown_seconds           = 60
+  enable_execute_command               = false
+
+  waf_rate_limit                           = 2000
+  log_retention_days                       = 7
+  queue_age_alarm_threshold_seconds        = 300
+  queue_depth_alarm_threshold              = 500
+  queue_alarm_evaluation_periods           = 3
+  queue_alarm_period_seconds               = 60
+  application_error_threshold              = 5
+  signature_failure_threshold              = 10
+  provider_failure_threshold               = 10
+  payment_reconciliation_threshold         = 1
+  athena_bytes_scanned_cutoff               = 1073741824
+
+  ses_sending_enabled = false
+  ses_identity_arns   = []
+  scheduled_jobs_enabled              = false
+  evaluation_schedule_expression      = "cron(0 2 * * ? *)"
+  reconciliation_schedule_expression  = "rate(15 minutes)"
+  retention_schedule_expression       = "cron(30 2 * * ? *)"
+}
+

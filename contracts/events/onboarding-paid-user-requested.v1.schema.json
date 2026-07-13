@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.nxtutors.internal/demo-command-center/events/onboarding-paid-user-requested.v1.schema.json",
+  "title": "onboarding.paid-user.requested.v1 payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["demo_ref", "user_ref", "activation_ref", "payment_ref", "plan_ref", "locale", "consent_refs", "requested_flow"],
+  "properties": {
+    "demo_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "user_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "activation_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "payment_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "plan_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "locale": {"type": "string", "minLength": 2, "maxLength": 20},
+    "consent_refs": {"type": "array", "items": {"type": "string", "maxLength": 255}, "maxItems": 20},
+    "requested_flow": {"enum": ["paid_student", "paid_tutor", "existing_account"]}
+  }
+}

@@ -1,0 +1,50 @@
+name: Security
+on:
+  pull_request:
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: read
+  security-events: write
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - uses: ./.github/actions/setup-python
+      - name: Dependency audit
+        run: uv run pip-audit
+      - name: SAST
+        run: uv run ruff check --select S src
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+      - name: Terraform security scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/terraform
+          framework: terraform
+      - name: Build container
+        run: docker build --tag demo-command-center:security .
+      - name: Container scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          image-ref: demo-command-center:security
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: demo-command-center:security
+          output-file: sbom.spdx.json
+      - name: License inventory
+        run: |
+          uv pip install pip-licenses
+          uv run pip-licenses --format=json --output-file=licenses.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: security-artifacts
+          path: |
+            sbom.spdx.json
+            licenses.json

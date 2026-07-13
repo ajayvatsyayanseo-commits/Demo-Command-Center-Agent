@@ -1,0 +1,43 @@
+name: Deploy Dev
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    concurrency: {group: demo-command-center-dev, cancel-in-progress: false}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - id: image
+        uses: ./.github/actions/build-image
+        with:
+          registry: ${{ steps.ecr.outputs.registry }}
+          repository: ${{ vars.ECR_REPOSITORY }}
+      - uses: ./.github/actions/ecs-deploy
+        with:
+          image-uri: ${{ steps.image.outputs.image-uri }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          api-service: ${{ vars.ECS_API_SERVICE }}
+          worker-service: ${{ vars.ECS_WORKER_SERVICE }}
+          task-definition-family: ${{ vars.ECS_API_TASK_FAMILY }}
+          worker-task-definition-family: ${{ vars.ECS_WORKER_TASK_FAMILY }}
+          migration-network-configuration: ${{ vars.ECS_MIGRATION_NETWORK_CONFIGURATION }}
+          smoke-url: ${{ vars.SMOKE_BASE_URL }}
+      - name: Record immutable deployment
+        run: echo "Deployed ${{ steps.image.outputs.image-uri }} to dev" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dev-image-digest
+          path: image-digest.txt
+          if-no-files-found: ignore

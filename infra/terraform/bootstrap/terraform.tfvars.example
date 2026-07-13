@@ -1,0 +1,8 @@
+aws_region        = "ap-south-1"
+state_bucket_name = "replace-with-globally-unique-terraform-state-bucket"
+tags = {
+  Owner              = "REPLACE_WITH_OWNER"
+  CostCenter         = "REPLACE_WITH_COST_CENTER"
+  DataClassification = "restricted"
+  ManagedBy          = "terraform"
+}

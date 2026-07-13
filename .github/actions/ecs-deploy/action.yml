@@ -1,0 +1,98 @@
+name: Deploy immutable ECS image
+description: Registers tasks, runs migrations, updates services, and waits for health.
+inputs:
+  image-uri:
+    required: true
+    description: ECR image URI pinned by sha256 digest
+  cluster:
+    required: true
+    description: ECS cluster from the protected environment
+  api-service:
+    required: true
+    description: API ECS service
+  worker-service:
+    required: true
+    description: Worker ECS service
+  task-definition-family:
+    required: true
+    description: Existing API task definition family
+  worker-task-definition-family:
+    required: true
+    description: Existing worker task definition family
+  migration-network-configuration:
+    required: true
+    description: JSON awsvpc network configuration from the protected environment
+  smoke-url:
+    required: true
+    description: Protected environment smoke URL
+runs:
+  using: composite
+  steps:
+    - id: task
+      shell: bash
+      env:
+        IMAGE_URI: ${{ inputs.image-uri }}
+        API_FAMILY: ${{ inputs.task-definition-family }}
+        WORKER_FAMILY: ${{ inputs.worker-task-definition-family }}
+      run: |
+        set -euo pipefail
+        test "${IMAGE_URI#*@sha256:}" != "$IMAGE_URI"
+        echo "old-api=$(aws ecs describe-services --cluster '${{ inputs.cluster }}' --services '${{ inputs.api-service }}' --query 'services[0].taskDefinition' --output text)" >> "$GITHUB_OUTPUT"
+        echo "old-worker=$(aws ecs describe-services --cluster '${{ inputs.cluster }}' --services '${{ inputs.worker-service }}' --query 'services[0].taskDefinition' --output text)" >> "$GITHUB_OUTPUT"
+        register_family() {
+          local family="$1" prefix="$2"
+          aws ecs describe-task-definition --task-definition "$family" --query taskDefinition > "${prefix}.json"
+          jq --arg image "$IMAGE_URI" '
+            .containerDefinitions |= map(.image=$image) |
+            del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
+          ' "${prefix}.json" > "${prefix}-next.json"
+          aws ecs register-task-definition --cli-input-json "file://${prefix}-next.json" --query taskDefinition.taskDefinitionArn --output text
+        }
+        echo "api-arn=$(register_family "$API_FAMILY" api-task)" >> "$GITHUB_OUTPUT"
+        echo "worker-arn=$(register_family "$WORKER_FAMILY" worker-task)" >> "$GITHUB_OUTPUT"
+    - shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        TASK_ARN: ${{ steps.task.outputs.api-arn }}
+        NETWORK_CONFIGURATION: ${{ inputs.migration-network-configuration }}
+      run: |
+        set -euo pipefail
+        aws ecs run-task --cluster "$CLUSTER" --task-definition "$TASK_ARN" --launch-type FARGATE --network-configuration "$NETWORK_CONFIGURATION" --overrides '{"containerOverrides":[{"name":"api","command":["python","-m","alembic","upgrade","head"]}]}' > migration-task.json
+        task_arn="$(jq -r '.tasks[0].taskArn // empty' migration-task.json)"
+        test -n "$task_arn"
+        aws ecs wait tasks-stopped --cluster "$CLUSTER" --tasks "$task_arn"
+        exit_code="$(aws ecs describe-tasks --cluster "$CLUSTER" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)"
+        test "$exit_code" = "0"
+    - shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        API_SERVICE: ${{ inputs.api-service }}
+        WORKER_SERVICE: ${{ inputs.worker-service }}
+        API_TASK_ARN: ${{ steps.task.outputs.api-arn }}
+        WORKER_TASK_ARN: ${{ steps.task.outputs.worker-arn }}
+        SMOKE_URL: ${{ inputs.smoke-url }}
+      run: |
+        set -euo pipefail
+        aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$API_TASK_ARN" >/dev/null
+        aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$WORKER_TASK_ARN" >/dev/null
+        aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
+        curl --fail --silent --show-error "$SMOKE_URL/health/live" >/dev/null
+        curl --fail --silent --show-error "$SMOKE_URL/health/ready" >/dev/null
+    - name: Restore previous task definitions after failed deployment
+      if: failure()
+      shell: bash
+      env:
+        CLUSTER: ${{ inputs.cluster }}
+        API_SERVICE: ${{ inputs.api-service }}
+        WORKER_SERVICE: ${{ inputs.worker-service }}
+        OLD_API: ${{ steps.task.outputs.old-api }}
+        OLD_WORKER: ${{ steps.task.outputs.old-worker }}
+      run: |
+        set -euo pipefail
+        if [ -n "$OLD_API" ] && [ "$OLD_API" != "None" ]; then
+          aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$OLD_API" >/dev/null
+        fi
+        if [ -n "$OLD_WORKER" ] && [ "$OLD_WORKER" != "None" ]; then
+          aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$OLD_WORKER" >/dev/null
+        fi
+        aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"

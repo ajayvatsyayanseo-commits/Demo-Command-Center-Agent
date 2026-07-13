@@ -1,0 +1,65 @@
+name: Rollback ECS
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Protected target environment
+        required: true
+        type: choice
+        options: [dev, staging, production]
+      image_uri:
+        description: Previously validated immutable ECR URI ending in @sha256 digest
+        required: true
+        type: string
+      incident_reference:
+        description: Incident/change reference recorded in the audit summary
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    concurrency: {group: "demo-command-center-${{ inputs.environment }}", cancel-in-progress: false}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate rollback input
+        env: {IMAGE_URI: "${{ inputs.image_uri }}"}
+        run: '[[ "$IMAGE_URI" =~ @sha256:[a-f0-9]{64}$ ]]'
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: Register rollback task definitions and update services
+        env:
+          IMAGE_URI: ${{ inputs.image_uri }}
+          CLUSTER: ${{ vars.ECS_CLUSTER }}
+          API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+          WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
+          API_FAMILY: ${{ vars.ECS_API_TASK_FAMILY }}
+          WORKER_FAMILY: ${{ vars.ECS_WORKER_TASK_FAMILY }}
+        run: |
+          set -euo pipefail
+          register() {
+            local family="$1" file="$2"
+            aws ecs describe-task-definition --task-definition "$family" --query taskDefinition > "$file"
+            jq --arg image "$IMAGE_URI" '.containerDefinitions |= map(.image=$image) | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)' "$file" > "next-$file"
+            aws ecs register-task-definition --cli-input-json "file://next-$file" --query taskDefinition.taskDefinitionArn --output text
+          }
+          api_arn="$(register "$API_FAMILY" api.json)"
+          worker_arn="$(register "$WORKER_FAMILY" worker.json)"
+          aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$api_arn" >/dev/null
+          aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$worker_arn" >/dev/null
+          aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
+      - name: Smoke test rollback
+        env: {BASE_URL: "${{ vars.SMOKE_BASE_URL }}"}
+        run: |
+          curl --fail --silent --show-error "$BASE_URL/health/live" >/dev/null
+          curl --fail --silent --show-error "$BASE_URL/health/ready" >/dev/null
+      - name: Audit summary
+        run: |
+          echo "Rollback environment: ${{ inputs.environment }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image: ${{ inputs.image_uri }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Incident/change: ${{ inputs.incident_reference }}" >> "$GITHUB_STEP_SUMMARY"

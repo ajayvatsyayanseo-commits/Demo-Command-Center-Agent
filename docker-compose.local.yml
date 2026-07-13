@@ -1,0 +1,92 @@
+name: demo-command-center-local
+
+x-logging: &bounded-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  build:
+    context: .
+    args:
+      VCS_REF: local
+      BUILD_DATE: local
+  env_file: [.env]
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: *bounded-logging
+  depends_on:
+    postgres: {condition: service_healthy}
+    redis: {condition: service_healthy}
+    localstack: {condition: service_healthy}
+  deploy:
+    resources:
+      limits: {cpus: "1.0", memory: 1G}
+      reservations: {cpus: "0.25", memory: 256M}
+
+services:
+  postgres:
+    image: postgres:16.6-bookworm
+    environment:
+      POSTGRES_DB: demo_command_center
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: ${LOCAL_POSTGRES_PASSWORD:?Set LOCAL_POSTGRES_PASSWORD for local use}
+    ports: ["127.0.0.1:5433:5432"]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U demo -d demo_command_center"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    tmpfs: [/var/run/postgresql:rw,nosuid,size=16m]
+    security_opt: [no-new-privileges:true]
+    logging: *bounded-logging
+
+  redis:
+    image: redis:7.4.1-bookworm
+    command: [redis-server, --appendonly, "yes", --protected-mode, "yes"]
+    ports: ["127.0.0.1:6380:6379"]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes: [redis-data:/data]
+    security_opt: [no-new-privileges:true]
+    logging: *bounded-logging
+
+  localstack:
+    image: localstack/localstack:4.0.3
+    environment:
+      SERVICES: sqs,s3,ses,scheduler,secretsmanager,kms
+      AWS_DEFAULT_REGION: ap-south-1
+      DISABLE_CORS_CHECKS: "1"
+    ports: ["127.0.0.1:4566:4566"]
+    healthcheck:
+      test: [CMD-SHELL, "awslocal sqs list-queues >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    security_opt: [no-new-privileges:true]
+    logging: *bounded-logging
+
+  api:
+    <<: *app
+    profiles: [app]
+    ports: ["127.0.0.1:8080:8080"]
+
+  worker:
+    <<: *app
+    profiles: [workers]
+    command: [python, -m, demo_command_center.workers]
+
+volumes:
+  postgres-data:
+  redis-data:

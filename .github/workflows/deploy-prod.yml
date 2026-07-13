@@ -1,0 +1,36 @@
+name: Deploy Production
+on:
+  workflow_dispatch:
+    inputs:
+      image_uri:
+        description: Staging-validated immutable ECR URI ending in @sha256 digest
+        required: true
+        type: string
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency: {group: demo-command-center-production, cancel-in-progress: false}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require immutable digest
+        env: {IMAGE_URI: "${{ inputs.image_uri }}"}
+        run: '[[ "$IMAGE_URI" =~ @sha256:[a-f0-9]{64}$ ]]'
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: ./.github/actions/ecs-deploy
+        with:
+          image-uri: ${{ inputs.image_uri }}
+          cluster: ${{ vars.ECS_CLUSTER }}
+          api-service: ${{ vars.ECS_API_SERVICE }}
+          worker-service: ${{ vars.ECS_WORKER_SERVICE }}
+          task-definition-family: ${{ vars.ECS_API_TASK_FAMILY }}
+          worker-task-definition-family: ${{ vars.ECS_WORKER_TASK_FAMILY }}
+          migration-network-configuration: ${{ vars.ECS_MIGRATION_NETWORK_CONFIGURATION }}
+          smoke-url: ${{ vars.SMOKE_BASE_URL }}
+      - run: echo "Promoted ${{ inputs.image_uri }} to production after protected approval" >> "$GITHUB_STEP_SUMMARY"

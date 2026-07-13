@@ -1,0 +1,3 @@
+# Test strategy
+
+The scaffold gates formatting, lint, strict typing, application imports, settings, health behavior, event contracts, explicit state transitions, database metadata, route authentication, signatures, dependency direction, circular imports, fake-provider rejection, and coverage. Claude implementation must add repository tests against PostgreSQL, Redis and LocalStack; provider sandbox contract tests; Laravel adapter tests; property tests for state and idempotency; concurrency tests for holds/payments/messages; end-to-end sagas; failure injection; load tests; and deployment smoke tests.

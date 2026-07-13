@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Observed Lead Intake to Onboarding legacy handoff v0 (UNVERIFIED for Demo)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "wa_message_id", "wa_phone", "message_text", "timestamp", "message_type", "raw_payload"],
+  "properties": {
+    "source": {"const": "lead_intake_agent"},
+    "wa_message_id": {"type": "string"},
+    "wa_phone": {"type": "string"},
+    "message_text": {"type": "string"},
+    "timestamp": {"type": "string"},
+    "message_type": {"type": "string"},
+    "raw_payload": {"type": "object"}
+  }
+}

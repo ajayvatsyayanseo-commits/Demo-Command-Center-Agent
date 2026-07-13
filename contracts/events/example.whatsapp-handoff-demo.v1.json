@@ -1,0 +1,27 @@
+{
+  "event_id": "018f47da-bf24-7d7a-8eb1-04af87c1a2b3",
+  "event_type": "whatsapp.handoff.demo.v1",
+  "schema_version": "1.0",
+  "occurred_at": "2026-07-13T06:00:00Z",
+  "source_agent": "lead-intake-agent",
+  "target_agent": "demo-command-center-agent",
+  "tenant_id": "nxtutors",
+  "region_id": null,
+  "correlation_id": "corr-example-001",
+  "causation_id": "meta-message-opaque",
+  "conversation_id": "conversation-opaque",
+  "actor": {"type": "user", "id": "provider-user-opaque"},
+  "subject": {"lead_id": "lead-opaque", "user_id": null, "tutor_id": null, "demo_id": null},
+  "idempotency_key": "lead:message:opaque:demo-handoff",
+  "traceparent": null,
+  "pii_classification": "restricted",
+  "payload": {
+    "provider_message_ref": "provider-message-opaque",
+    "intent": "demo_request",
+    "lead_ref": "lead-opaque",
+    "user_ref": null,
+    "message": {"type": "text", "text": "I would like a demo"},
+    "service_window": {"last_user_message_at": "2026-07-13T06:00:00Z", "expires_at": "2026-07-14T06:00:00Z"},
+    "consent_refs": []
+  }
+}

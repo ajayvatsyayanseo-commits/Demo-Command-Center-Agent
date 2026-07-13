@@ -1,0 +1,33 @@
+name: Build immutable image
+description: Builds and pushes a commit-tagged image, returning its registry digest.
+inputs:
+  registry:
+    required: true
+    description: Authenticated ECR registry
+  repository:
+    required: true
+    description: ECR repository name from environment configuration
+outputs:
+  image-uri:
+    value: ${{ steps.digest.outputs.image-uri }}
+    description: Immutable image URI by digest
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+    - uses: docker/build-push-action@v6
+      id: build
+      with:
+        context: .
+        push: true
+        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}
+        provenance: true
+        sbom: true
+    - id: digest
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.registry }}/${{ inputs.repository }}
+        DIGEST: ${{ steps.build.outputs.digest }}
+      run: |
+        echo "image-uri=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+        echo "$IMAGE@$DIGEST" > image-digest.txt

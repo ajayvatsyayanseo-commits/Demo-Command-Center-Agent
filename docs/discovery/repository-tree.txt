@@ -1,0 +1,616 @@
+demo-command-center-agent/
+|-- .github/
+|   |-- actions/
+|   |   |-- build-image/
+|   |   |   `-- action.yml
+|   |   |-- ecs-deploy/
+|   |   |   `-- action.yml
+|   |   `-- setup-python/
+|   |       `-- action.yml
+|   `-- workflows/
+|       |-- ci.yml
+|       |-- deploy-dev.yml
+|       |-- deploy-prod.yml
+|       |-- deploy-staging.yml
+|       |-- rollback.yml
+|       |-- security.yml
+|       `-- terraform-plan.yml
+|-- contracts/
+|   |-- cashfree/
+|   |   `-- payment-webhook-normalized.v1.schema.json
+|   |-- events/
+|   |   |-- agent-event-envelope.v1.schema.json
+|   |   |-- example.whatsapp-handoff-demo.v1.json
+|   |   |-- onboarding-paid-user-requested.v1.schema.json
+|   |   `-- whatsapp-handoff-demo.v1.schema.json
+|   |-- google_calendar/
+|   |   `-- calendar-operation.v1.schema.json
+|   |-- lead_intake/
+|   |   `-- legacy-handoff-v0.schema.json
+|   |-- meta/
+|   |   `-- README.md
+|   |-- onboarding/
+|   |   `-- handoff-acknowledgement.v1.schema.json
+|   |-- openapi/
+|   |   `-- internal-api.v1.yaml
+|   `-- website/
+|       `-- website-gateway.v1.yaml
+|-- docs/
+|   |-- adr/
+|   |   |-- ADR-001-modular-monolith.md
+|   |   |-- ADR-002-single-whatsapp-ingress.md
+|   |   |-- ADR-003-database-and-data-ownership.md
+|   |   |-- ADR-004-inbox-outbox-idempotency.md
+|   |   |-- ADR-005-payment-ownership.md
+|   |   |-- ADR-006-google-calendar-identity.md
+|   |   |-- ADR-007-llm-boundaries.md
+|   |   |-- ADR-008-state-machine-and-sagas.md
+|   |   |-- ADR-009-cache-and-locking.md
+|   |   |-- ADR-010-analytics-and-pii.md
+|   |   |-- ADR-011-aws-runtime.md
+|   |   `-- ADR-012-deployment-and-rollback.md
+|   |-- api/
+|   |   `-- README.md
+|   |-- architecture/
+|   |   |-- agent-harmony.md
+|   |   |-- capability-map.md
+|   |   |-- container-and-component-model.md
+|   |   |-- demo-state-machine.md
+|   |   |-- deployment-topology.md
+|   |   |-- failure-modes.md
+|   |   |-- module-dependency-rules.md
+|   |   |-- payment-saga.md
+|   |   |-- problem-definition.md
+|   |   |-- README.md
+|   |   |-- scheduling-saga.md
+|   |   `-- system-context.md
+|   |-- compliance/
+|   |   `-- README.md
+|   |-- cost/
+|   |   |-- aws-cost-controls.md
+|   |   |-- capacity-model.md
+|   |   `-- token-and-provider-budgets.md
+|   |-- data/
+|   |   |-- analytics-data-contract.md
+|   |   |-- canonical-data-model.md
+|   |   |-- data-ownership.md
+|   |   |-- identity-mapping.md
+|   |   `-- retention-and-deletion.md
+|   |-- discovery/
+|   |   |-- assumptions-and-unverified-items.md
+|   |   |-- codex-final-report.md
+|   |   |-- current-system-inventory.md
+|   |   |-- integration-gaps.md
+|   |   |-- lead-intake-findings.md
+|   |   |-- onboarding-findings.md
+|   |   |-- repository-tree.txt
+|   |   |-- website-data-model.md
+|   |   `-- website-demo-flow.md
+|   |-- integration/
+|   |   |-- cashfree.md
+|   |   |-- email.md
+|   |   |-- event-envelope.md
+|   |   |-- google-calendar-meet.md
+|   |   |-- lead-intake-contract.md
+|   |   |-- meta-whatsapp.md
+|   |   |-- onboarding-contract.md
+|   |   `-- website-gateway.md
+|   |-- model/
+|   |   |-- evaluation-and-drift.md
+|   |   |-- forecasting-design.md
+|   |   `-- objection-extraction-design.md
+|   |-- operations/
+|   |   |-- feature-flags-and-kill-switches.md
+|   |   |-- observability.md
+|   |   |-- rollback-triggers.md
+|   |   `-- slos-and-slas.md
+|   |-- privacy/
+|   |   |-- consent-model.md
+|   |   |-- logging-and-redaction.md
+|   |   `-- pii-data-map.md
+|   |-- prompts/
+|   |   `-- README.md
+|   |-- runbooks/
+|   |   `-- README.md
+|   |-- security/
+|   |   |-- abuse-and-rate-limiting.md
+|   |   |-- authorization-model.md
+|   |   |-- incident-response.md
+|   |   |-- secrets-and-key-rotation.md
+|   |   |-- threat-model.md
+|   |   `-- trust-boundaries.md
+|   `-- testing/
+|       `-- README.md
+|-- infra/
+|   |-- alarms/
+|   |   `-- README.md
+|   |-- dashboards/
+|   |   `-- README.md
+|   |-- glue/
+|   |   `-- README.md
+|   `-- terraform/
+|       |-- environments/
+|       |   |-- dev/
+|       |   |   `-- README.md
+|       |   |-- prod/
+|       |   |   `-- README.md
+|       |   `-- staging/
+|       |       `-- README.md
+|       |-- modules/
+|       |   |-- alb/
+|       |   |   `-- main.tf
+|       |   |-- aurora/
+|       |   |   `-- main.tf
+|       |   |-- dns_acm/
+|       |   |   `-- main.tf
+|       |   |-- ecr/
+|       |   |   `-- main.tf
+|       |   |-- ecs/
+|       |   |   `-- main.tf
+|       |   |-- eventbridge/
+|       |   |   `-- main.tf
+|       |   |-- github_oidc/
+|       |   |   `-- main.tf
+|       |   |-- glue_athena/
+|       |   |   `-- main.tf
+|       |   |-- iam/
+|       |   |   `-- main.tf
+|       |   |-- kms/
+|       |   |   `-- main.tf
+|       |   |-- network/
+|       |   |   `-- main.tf
+|       |   |-- observability/
+|       |   |   `-- main.tf
+|       |   |-- rds_proxy/
+|       |   |   `-- main.tf
+|       |   |-- redis/
+|       |   |   `-- main.tf
+|       |   |-- s3/
+|       |   |   `-- main.tf
+|       |   |-- secrets/
+|       |   |   `-- main.tf
+|       |   |-- ses/
+|       |   |   `-- main.tf
+|       |   |-- sqs/
+|       |   |   `-- main.tf
+|       |   |-- waf/
+|       |   |   `-- main.tf
+|       |   `-- README.md
+|       |-- .terraform.lock.hcl
+|       |-- main.tf
+|       |-- README.md
+|       |-- variables.tf
+|       `-- versions.tf
+|-- integrations/
+|   `-- nxtutors-laravel-adapter/
+|       |-- app/
+|       |   `-- Http/
+|       |       |-- Controllers/
+|       |       |   |-- PlanQuoteController.php
+|       |       |   `-- SubscriptionActivationController.php
+|       |       `-- Middleware/
+|       |           `-- VerifyInternalService.php
+|       |-- config/
+|       |   `-- demo_command_center.php
+|       |-- database/
+|       |   `-- migrations/
+|       |       `-- 2026_07_13_000001_create_demo_integration_tables.php
+|       |-- routes/
+|       |   `-- api.php
+|       |-- tests/
+|       |   `-- Feature/
+|       |       `-- GatewayFailsClosedTest.php
+|       |-- composer.json
+|       `-- README.md
+|-- migrations/
+|   |-- versions/
+|   |   `-- 20260713_000001_initial_operational_core.py
+|   |-- env.py
+|   |-- README.md
+|   `-- script.py.mako
+|-- scripts/
+|   |-- README.md
+|   |-- validate_contracts.py
+|   `-- validate_workflows.py
+|-- src/
+|   `-- demo_command_center/
+|       |-- analytics/
+|       |   |-- events/
+|       |   |   `-- README.md
+|       |   |-- exports/
+|       |   |   `-- README.md
+|       |   |-- quality/
+|       |   |   `-- README.md
+|       |   `-- regional/
+|       |       `-- README.md
+|       |-- api/
+|       |   |-- dependencies/
+|       |   |   |-- __init__.py
+|       |   |   |-- auth.py
+|       |   |   `-- container.py
+|       |   |-- errors/
+|       |   |   |-- __init__.py
+|       |   |   `-- taxonomy.py
+|       |   |-- middleware/
+|       |   |   |-- __init__.py
+|       |   |   `-- correlation.py
+|       |   |-- openapi/
+|       |   |   `-- README.md
+|       |   |-- routes/
+|       |   |   |-- __init__.py
+|       |   |   |-- health.py
+|       |   |   |-- internal.py
+|       |   |   `-- providers.py
+|       |   |-- schemas/
+|       |   |   |-- __init__.py
+|       |   |   `-- ingress.py
+|       |   `-- __init__.py
+|       |-- bootstrap/
+|       |   |-- __init__.py
+|       |   |-- application_factory.py
+|       |   |-- dependency_container.py
+|       |   `-- lifecycle.py
+|       |-- cache/
+|       |   |-- circuit_breakers/
+|       |   |   `-- README.md
+|       |   |-- keys/
+|       |   |   |-- __init__.py
+|       |   |   `-- policy.py
+|       |   |-- locks/
+|       |   |   `-- README.md
+|       |   |-- rate_limits/
+|       |   |   `-- README.md
+|       |   `-- redis/
+|       |       `-- README.md
+|       |-- cli/
+|       |   |-- __init__.py
+|       |   |-- doctor.py
+|       |   |-- evaluate_drift.py
+|       |   |-- reconcile_payments.py
+|       |   |-- redrive_dlq.py
+|       |   |-- replay_event.py
+|       |   `-- retention_cleanup.py
+|       |-- compliance/
+|       |   |-- audit/
+|       |   |   `-- README.md
+|       |   |-- business/
+|       |   |   `-- README.md
+|       |   |-- communications/
+|       |   |   `-- README.md
+|       |   `-- meta/
+|       |       `-- README.md
+|       |-- config/
+|       |   |-- feature_flags.py
+|       |   |-- policy_loader.py
+|       |   |-- settings.py
+|       |   `-- validation.py
+|       |-- cost_control/
+|       |   |-- budgets/
+|       |   |   |-- __init__.py
+|       |   |   `-- port.py
+|       |   |-- circuit_breakers/
+|       |   |   `-- README.md
+|       |   |-- provider_usage/
+|       |   |   `-- README.md
+|       |   `-- token_usage/
+|       |       `-- README.md
+|       |-- evaluation/
+|       |   |-- drift/
+|       |   |   `-- README.md
+|       |   |-- models/
+|       |   |   `-- README.md
+|       |   |-- performance/
+|       |   |   `-- README.md
+|       |   `-- prompts/
+|       |       `-- README.md
+|       |-- glue/
+|       |   |-- envelopes/
+|       |   |   |-- __init__.py
+|       |   |   `-- agent_event.py
+|       |   |-- lead_intake/
+|       |   |   `-- README.md
+|       |   |-- onboarding/
+|       |   |   `-- README.md
+|       |   |-- outbound_gateway/
+|       |   |   `-- README.md
+|       |   |-- routing/
+|       |   |   `-- README.md
+|       |   |-- website/
+|       |   |   `-- README.md
+|       |   `-- __init__.py
+|       |-- guardrails/
+|       |   |-- business_policy/
+|       |   |   `-- README.md
+|       |   |-- input/
+|       |   |   `-- README.md
+|       |   |-- output/
+|       |   |   `-- README.md
+|       |   `-- tool_policy/
+|       |       `-- README.md
+|       |-- infrastructure/
+|       |   |-- database/
+|       |   |   |-- migrations_support/
+|       |   |   |   `-- README.md
+|       |   |   |-- models/
+|       |   |   |   |-- __init__.py
+|       |   |   |   `-- operational.py
+|       |   |   |-- repositories/
+|       |   |   |   `-- README.md
+|       |   |   |-- unit_of_work/
+|       |   |   |   `-- README.md
+|       |   |   |-- __init__.py
+|       |   |   `-- base.py
+|       |   |-- idempotency/
+|       |   |   `-- README.md
+|       |   |-- inbox/
+|       |   |   `-- README.md
+|       |   |-- outbox/
+|       |   |   `-- README.md
+|       |   |-- queues/
+|       |   |   `-- README.md
+|       |   |-- scheduler/
+|       |   |   `-- README.md
+|       |   |-- secrets/
+|       |   |   `-- README.md
+|       |   |-- storage/
+|       |   |   `-- README.md
+|       |   `-- __init__.py
+|       |-- integrations/
+|       |   |-- amazon_ses/
+|       |   |   `-- README.md
+|       |   |-- aws/
+|       |   |   `-- README.md
+|       |   |-- cashfree/
+|       |   |   `-- README.md
+|       |   |-- google_calendar/
+|       |   |   `-- README.md
+|       |   |-- lead_intake/
+|       |   |   `-- README.md
+|       |   |-- meta_whatsapp/
+|       |   |   `-- README.md
+|       |   |-- nxtutors_website/
+|       |   |   `-- README.md
+|       |   |-- onboarding/
+|       |   |   `-- README.md
+|       |   `-- openai/
+|       |       `-- README.md
+|       |-- memory/
+|       |   |-- conversation/
+|       |   |   `-- README.md
+|       |   |-- retention/
+|       |   |   `-- README.md
+|       |   |-- retrieval/
+|       |   |   `-- README.md
+|       |   `-- summaries/
+|       |       `-- README.md
+|       |-- modules/
+|       |   |-- communications/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- demo_core/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   |-- __init__.py
+|       |   |   |   `-- identifiers.py
+|       |   |   |-- ports/
+|       |   |   |   |-- __init__.py
+|       |   |   |   `-- gateways.py
+|       |   |   `-- __init__.py
+|       |   |-- discount_suggestions/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- human_handoff/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- objection_extraction/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- paid_transition/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- post_demo_conversion/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- regional_monitoring/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- reminders/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- scheduling/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- success_forecasting/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   |-- tutor_matching/
+|       |   |   |-- application/
+|       |   |   |   `-- README.md
+|       |   |   |-- domain/
+|       |   |   |   `-- README.md
+|       |   |   |-- ports/
+|       |   |   |   `-- README.md
+|       |   |   `-- __init__.py
+|       |   `-- __init__.py
+|       |-- observability/
+|       |   |-- health/
+|       |   |   `-- README.md
+|       |   |-- logging/
+|       |   |   |-- __init__.py
+|       |   |   `-- redaction.py
+|       |   |-- metrics/
+|       |   |   `-- README.md
+|       |   `-- tracing/
+|       |       `-- README.md
+|       |-- privacy/
+|       |   |-- analytics_sanitization/
+|       |   |   `-- README.md
+|       |   |-- consent/
+|       |   |   `-- README.md
+|       |   |-- deletion/
+|       |   |   `-- README.md
+|       |   |-- pii/
+|       |   |   `-- README.md
+|       |   `-- retention/
+|       |       `-- README.md
+|       |-- resilience/
+|       |   |-- bulkheads/
+|       |   |   `-- README.md
+|       |   |-- circuit_breakers/
+|       |   |   |-- __init__.py
+|       |   |   `-- port.py
+|       |   |-- fallbacks/
+|       |   |   `-- README.md
+|       |   |-- retries/
+|       |   |   `-- README.md
+|       |   `-- timeouts/
+|       |       `-- README.md
+|       |-- security/
+|       |   |-- abuse_controls/
+|       |   |   `-- README.md
+|       |   |-- authentication/
+|       |   |   `-- README.md
+|       |   |-- authorization/
+|       |   |   `-- README.md
+|       |   |-- encryption/
+|       |   |   `-- README.md
+|       |   |-- replay_protection/
+|       |   |   `-- README.md
+|       |   `-- signatures/
+|       |       |-- __init__.py
+|       |       `-- webhook.py
+|       |-- state/
+|       |   |-- guards/
+|       |   |   `-- README.md
+|       |   |-- machine/
+|       |   |   |-- __init__.py
+|       |   |   `-- demo_state.py
+|       |   |-- persistence/
+|       |   |   `-- README.md
+|       |   |-- transitions/
+|       |   |   |-- __init__.py
+|       |   |   |-- README.md
+|       |   |   `-- table.py
+|       |   `-- __init__.py
+|       |-- workers/
+|       |   |-- analytics/
+|       |   |   `-- README.md
+|       |   |-- human_handoff/
+|       |   |   `-- README.md
+|       |   |-- inbound/
+|       |   |   `-- README.md
+|       |   |-- model_evaluation/
+|       |   |   `-- README.md
+|       |   |-- outbound/
+|       |   |   `-- README.md
+|       |   |-- payments/
+|       |   |   `-- README.md
+|       |   |-- reminders/
+|       |   |   `-- README.md
+|       |   |-- scheduling/
+|       |   |   `-- README.md
+|       |   |-- __init__.py
+|       |   `-- __main__.py
+|       |-- __init__.py
+|       `-- main.py
+|-- tests/
+|   |-- architecture/
+|   |   |-- test_database_metadata.py
+|   |   |-- test_dependency_rules.py
+|   |   `-- test_route_boundaries.py
+|   |-- chaos/
+|   |   `-- README.md
+|   |-- contract/
+|   |   `-- test_event_example.py
+|   |-- e2e/
+|   |   `-- README.md
+|   |-- fakes/
+|   |   `-- README.md
+|   |-- fixtures/
+|   |   `-- README.md
+|   |-- integration/
+|   |   `-- test_application_health.py
+|   |-- load/
+|   |   `-- locustfile.py
+|   |-- property/
+|   |   `-- README.md
+|   |-- security/
+|   |   `-- test_webhook_signatures.py
+|   |-- unit/
+|   |   |-- test_cache_keys.py
+|   |   |-- test_doctor.py
+|   |   |-- test_event_envelope.py
+|   |   |-- test_settings.py
+|   |   `-- test_state_transitions.py
+|   `-- conftest.py
+|-- tools/
+|   `-- README.md
+|-- .dockerignore
+|-- .editorconfig
+|-- .env.example
+|-- .gitignore
+|-- .pre-commit-config.yaml
+|-- AGENTS.md
+|-- alembic.ini
+|-- CHANGELOG.md
+|-- CODEOWNERS
+|-- CONTRIBUTING.md
+|-- docker-compose.local.yml
+|-- Dockerfile
+|-- LICENSE
+|-- Makefile
+|-- pyproject.toml
+|-- README.md
+|-- SECURITY.md
+`-- uv.lock
