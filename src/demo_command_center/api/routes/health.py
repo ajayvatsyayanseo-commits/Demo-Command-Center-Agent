@@ -8,7 +8,6 @@ from demo_command_center.api.dependencies.auth import require_internal_scopes
 from demo_command_center.api.dependencies.container import get_container
 from demo_command_center.bootstrap.dependency_container import (
     DependencyContainer,
-    LocalEventIngress,
 )
 from demo_command_center.security.authentication import InternalIdentity
 
@@ -65,5 +64,7 @@ async def dependencies(
     all_healthy = all(checks.values())
     return {
         "status": "healthy" if all_healthy else "degraded",
-        "dependencies": {name: "healthy" if value else "unavailable" for name, value in checks.items()},
+        "dependencies": {
+            name: "healthy" if value else "unavailable" for name, value in checks.items()
+        },
     }

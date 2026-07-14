@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, cast, runtime_checkable
+from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -13,7 +13,7 @@ from demo_command_center.modules.demo_core.ports.gateways import DemoRecord
 
 
 class ConcurrentModificationError(RuntimeError):
-    pass
+    """Raised when optimistic concurrency prevents a demo update."""
 
 
 @runtime_checkable
@@ -82,7 +82,7 @@ class SqlAlchemyDemoRepository:
             .values(state=demo.state, version=expected_version + 1)
         )
         result = await self._session.execute(statement)
-        if cast(int, result.rowcount) != 1:
+        if result.rowcount != 1:
             raise ConcurrentModificationError("demo record was modified concurrently")
         demo.version = expected_version + 1
 

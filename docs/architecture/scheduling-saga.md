@@ -13,18 +13,22 @@ sequenceDiagram
     A->>G: free/busy for configured calendars
     A->>DB: propose slots in participant timezones
     A->>DB: atomically create expiring hold
-    A->>Q: request participant confirmations
+    A->>W: resolve selected tutor phone recipient reference
+    A->>Q: ask selected tutor to accept proposed slot
+    Q-->>A: tutor acceptance/decline event
+    A->>Q: request remaining participant confirmations
     Q-->>A: confirmation events
     A->>DB: lock case + verify all/hold active
     A->>G: create event + unique conferenceRequestId
     G-->>A: event id / conference pending or ready
     A->>DB: persist calendar/meeting + SCHEDULED + outbox
-    A->>Q: confirmation delivery requests
+    A->>W: resolve tutor and student phone recipient references
+    A->>Q: send Meet link to selected tutor and student/guardian
 ```
 
 Use UTC `timestamptz` plus original IANA zones. Working hours, exceptions, buffers, mode/location feasibility, website availability, and Calendar free/busy are separate evidence with capture timestamps. Unknown availability cannot be treated as free.
 
-An active hold is protected by a PostgreSQL range exclusion constraint per tutor/resource (planned in scheduling migration) and a unique active operation key. Redis may reduce contention but cannot establish the booking. Hold TTL/confirmation deadlines are policy values. Calendar creation uses a stable operation record, external extended property `demo_id`, and deterministic unique conference request ID; retries first reconcile before creating.
+An active hold is protected by a PostgreSQL range exclusion constraint per tutor/resource (planned in scheduling migration) and a unique active operation key. Redis may reduce contention but cannot establish the booking. Hold TTL/confirmation deadlines are policy values. Calendar creation uses a stable operation record, external extended property `demo_id`, and deterministic unique conference request ID; retries first reconcile before creating. The selected teacher must accept before the Google Meet operation is attempted, and link delivery is skipped while conference creation is still pending.
 
 ## Rescheduling
 

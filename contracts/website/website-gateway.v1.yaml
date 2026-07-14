@@ -1,38 +1,1252 @@
 openapi: 3.1.0
-info: {title: NXTutors Website Integration Gateway, version: 1.0.0}
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: NXTutors Website Integration Gateway
+  version: 1.0.0
+  description: >-
+    Private, versioned service-to-service gateway implemented by the in-repository
+    Laravel adapter. The Laravel/MySQL website remains authoritative. Every request
+    is fail-closed, HMAC authenticated, replay protected, scoped, rate limited, and
+    audited. Browser session or bearer authentication is not supported.
 servers:
   - url: https://website.internal.example.invalid/internal/api/v1/demo-command-center
-security: [{serviceAuth: []}]
+    description: Placeholder private origin; deployment supplies the real internal origin.
+security:
+  - websiteHmac: []
+tags:
+  - {name: Identity, description: Safe identity and minimum-profile projections.}
+  - {name: Tutors, description: Normalized tutor, catalog, contact, and approved-review projections.}
+  - {name: Plans, description: Authoritative eligible plans and short-lived bound quotes.}
+  - {name: Subscriptions, description: Authoritative subscription state and exactly-once activation.}
+  - {name: Demos, description: Versioned website lifecycle and onboarding projections.}
+
+x-hmac-canonicalization:
+  algorithm: HMAC-SHA256
+  signature-prefix: "v1="
+  canonical-request: |-
+    UPPERCASE_HTTP_METHOD
+    EXACT_REQUEST_TARGET_INCLUDING_QUERY_STRING
+    X-NXTutors-Timestamp
+    X-NXTutors-Nonce
+    X-NXTutors-Source
+    X-NXTutors-Audience
+    LEXICOGRAPHICALLY_SORTED_UNIQUE_SCOPES_JOINED_BY_ONE_SPACE
+    LOWERCASE_HEX_SHA256_OF_EXACT_RAW_REQUEST_BODY
+  notes:
+    - The request target is the exact path and query string returned by Laravel getRequestUri; query ordering and encoding are signed.
+    - The final canonical line for a bodyless request is the SHA-256 digest of the empty byte string.
+    - The signature header is v1= followed by the lowercase hexadecimal HMAC-SHA256 digest.
+    - A nonce is durably accepted only once per key ID during the configured replay window.
+    - The default source is demo-command-center and the default audience is nxtutors-website-gateway.
+
+x-hmac-parameters: &hmacParameters
+  - {$ref: '#/components/parameters/HmacKeyId'}
+  - {$ref: '#/components/parameters/HmacTimestamp'}
+  - {$ref: '#/components/parameters/HmacNonce'}
+  - {$ref: '#/components/parameters/HmacSource'}
+  - {$ref: '#/components/parameters/HmacAudience'}
+  - {$ref: '#/components/parameters/HmacScopes'}
+  - {$ref: '#/components/parameters/HmacSignature'}
+  - {$ref: '#/components/parameters/RequestId'}
+
+x-success-response-headers: &successHeaders
+  X-Request-ID: {$ref: '#/components/headers/RequestIdResponse'}
+  Cache-Control: {$ref: '#/components/headers/CacheControlResponse'}
+  X-Content-Type-Options: {$ref: '#/components/headers/ContentTypeOptionsResponse'}
+
+x-idempotent-success-response-headers: &idempotentSuccessHeaders
+  X-Request-ID: {$ref: '#/components/headers/RequestIdResponse'}
+  Cache-Control: {$ref: '#/components/headers/CacheControlResponse'}
+  X-Content-Type-Options: {$ref: '#/components/headers/ContentTypeOptionsResponse'}
+  X-Idempotency-Replayed: {$ref: '#/components/headers/IdempotencyReplayedResponse'}
+
 paths:
-  /tutors/candidates:
+  /identities/resolve:
+    parameters: *hmacParameters
     get:
-      operationId: listTutorCandidates
+      tags: [Identity]
+      operationId: resolveWebsiteIdentity
+      summary: Resolve exactly one website identifier
+      description: >-
+        Exactly one of register_ref, user_ref, email, or phone must be supplied.
+        Restricted source fields are never returned.
+      x-required-scope: demo:identity:read
       parameters:
-        - {name: requirement_ref, in: query, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/RegisterRefQuery'
+        - $ref: '#/components/parameters/UserRefQuery'
+        - name: email
+          in: query
+          description: RFC-valid email used only for lookup; it is not echoed.
+          schema: {type: string, format: email, maxLength: 255}
+        - name: phone
+          in: query
+          description: E.164-like phone used only for lookup; it is not echoed.
+          schema: {type: string, pattern: '^\+?[1-9][0-9]{7,14}$'}
       responses:
-        '200': {description: Normalized candidates; availability may be unknown}
-  /plans/{plan_id}/quote:
+        '200':
+          description: Resolution result; zero, one, or at most two safe matches.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/IdentityResolution'}}
+                unevaluatedProperties: false
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /profiles/{register}/minimum:
+    parameters: *hmacParameters
     get:
-      operationId: getPlanQuote
+      tags: [Identity]
+      operationId: getMinimumWebsiteProfile
+      summary: Fetch a safe minimum profile projection
+      x-required-scope: demo:profiles:read
       parameters:
-        - {name: plan_id, in: path, required: true, schema: {type: string}}
-        - {name: user_ref, in: query, required: true, schema: {type: string}}
+        - $ref: '#/components/parameters/RegisterPath'
       responses:
-        '200': {description: Authoritative versioned quote}
-  /subscriptions/activations:
+        '200':
+          description: Minimum profile without password, OTP, document, email, or phone data.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/MinimumProfile'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /profiles/{register}/phone-resolve:
+    parameters: *hmacParameters
     post:
-      operationId: activateSubscription
+      tags: [Identity]
+      operationId: resolveProfilePhoneRecipient
+      summary: Resolve a learner phone recipient reference for a bound demo purpose
+      description: >-
+        This privileged read returns an opaque recipient reference and masked phone only.
+        The raw register.phone value is never returned to Demo Command Center.
+      x-required-scope: demo:profile-phone:read
+      parameters:
+        - $ref: '#/components/parameters/RegisterPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhoneResolveRequest'}
+      responses:
+        '200':
+          description: Purpose-bound learner WhatsApp recipient reference.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/WebsitePhoneRecipient'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /tutors/candidates:
+    parameters: *hmacParameters
+    get:
+      tags: [Tutors]
+      operationId: listTutorCandidates
+      summary: List normalized eligible tutor candidates
+      description: >-
+        Course filters use case-insensitive exact matching over normalized values.
+        Availability is deliberately returned as unknown; this endpoint never confirms it.
+      x-required-scope: demo:tutors:read
+      parameters:
+        - {$ref: '#/components/parameters/SubjectQuery'}
+        - {$ref: '#/components/parameters/BoardQuery'}
+        - {$ref: '#/components/parameters/ClassQuery'}
+        - {$ref: '#/components/parameters/ModeQuery'}
+        - {$ref: '#/components/parameters/CityQuery'}
+        - {$ref: '#/components/parameters/DistrictQuery'}
+        - {$ref: '#/components/parameters/StateQuery'}
+        - {$ref: '#/components/parameters/ClassTypeQuery'}
+        - {$ref: '#/components/parameters/PageQuery'}
+        - {$ref: '#/components/parameters/PerPageQuery'}
+      responses:
+        '200':
+          description: Paginated tutor projections from the configured legacy course sources.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/TutorCandidatePage'}}
+                unevaluatedProperties: false
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /tutors/{tutor}:
+    parameters: *hmacParameters
+    get:
+      tags: [Tutors]
+      operationId: getTutorProjection
+      summary: Fetch one normalized tutor projection
+      x-required-scope: demo:tutors:read
+      parameters:
+        - {$ref: '#/components/parameters/TutorPath'}
+      responses:
+        '200':
+          description: Safe tutor projection; direct contact fields are excluded.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/TutorProjection'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /tutors/{tutor}/contact-resolve:
+    parameters: *hmacParameters
+    post:
+      tags: [Tutors]
+      operationId: resolveTutorContact
+      summary: Resolve the tutor email for a bound demo purpose
+      description: >-
+        This privileged read requires its dedicated contact scope. The response is bound
+        to the supplied demo and invitation, reschedule, or cancellation purpose.
+      x-required-scope: demo:tutor-contact:read
+      parameters:
+        - {$ref: '#/components/parameters/TutorPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ContactResolveRequest'}
+      responses:
+        '200':
+          description: Purpose-bound tutor email reference.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/TutorContact'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /tutors/{tutor}/phone-resolve:
+    parameters: *hmacParameters
+    post:
+      tags: [Tutors]
+      operationId: resolveTutorPhoneRecipient
+      summary: Resolve a selected tutor phone recipient reference for a bound demo purpose
+      description: >-
+        This privileged read is used for teacher-first acceptance and session-link delivery.
+        It returns an opaque recipient reference and masked phone only; raw register.phone is
+        never returned to Demo Command Center.
+      x-required-scope: demo:tutor-phone:read
+      parameters:
+        - {$ref: '#/components/parameters/TutorPath'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PhoneResolveRequest'}
+      responses:
+        '200':
+          description: Purpose-bound tutor WhatsApp recipient reference.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/WebsitePhoneRecipient'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /reference/catalog:
+    parameters: *hmacParameters
+    get:
+      tags: [Tutors]
+      operationId: getTutorReferenceCatalog
+      summary: List normalized tutor search reference values
+      x-required-scope: demo:reference:read
+      responses:
+        '200':
+          description: Deduplicated and naturally sorted reference values.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/ReferenceCatalog'}}
+                unevaluatedProperties: false
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /reference/regions:
+    parameters: *hmacParameters
+    get:
+      tags: [Tutors]
+      operationId: getRegionMappings
+      summary: Fetch explicitly configured region mappings
+      x-required-scope: demo:regions:read
+      responses:
+        '200':
+          description: Versioned mappings; configured is false when no safe mappings exist.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/RegionMappings'}}
+                unevaluatedProperties: false
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /social-proof:
+    parameters: *hmacParameters
+    get:
+      tags: [Tutors]
+      operationId: listApprovedSocialProof
+      summary: List explicitly approved review excerpts
+      x-required-scope: demo:social-proof:read
+      parameters:
+        - name: limit
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 20, default: 10}
+      responses:
+        '200':
+          description: Approved-only social proof; unapproved content is excluded.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/SocialProofCollection'}}
+                unevaluatedProperties: false
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /plans:
+    parameters: *hmacParameters
+    get:
+      tags: [Plans]
+      operationId: listApprovedPlans
+      summary: List authoritative eligible subscription plans
+      x-required-scope: demo:plans:read
+      responses:
+        '200':
+          description: At most 200 normalized eligible plans.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/PlanCollection'}}
+                unevaluatedProperties: false
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /plans/{plan}/quote:
+    parameters: *hmacParameters
+    get:
+      tags: [Plans]
+      operationId: getPlanQuote
+      summary: Fetch an authoritative, user-bound, versioned plan quote
+      x-required-scope: demo:plans:read
+      parameters:
+        - {$ref: '#/components/parameters/PlanPath'}
+        - name: user_ref
+          in: query
+          required: true
+          description: Website register ID or external user reference.
+          schema: {type: string, minLength: 1, maxLength: 255}
+      responses:
+        '200':
+          description: Quote expiring five minutes after generation.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/PlanQuote'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /subscriptions/state:
+    parameters: *hmacParameters
+    get:
+      tags: [Subscriptions]
+      operationId: getSubscriptionState
+      summary: Fetch authoritative website subscription and order state
+      x-required-scope: demo:subscriptions:read
+      parameters:
+        - name: website_user_ref
+          in: query
+          required: true
+          schema: {type: string, minLength: 1, maxLength: 255}
+      responses:
+        '200':
+          description: Safe allowlisted legacy subscription and order records.
+          headers: *successHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/SubscriptionState'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /subscriptions/activations:
+    parameters: *hmacParameters
+    post:
+      tags: [Subscriptions]
+      operationId: activateVerifiedSubscription
+      summary: Apply a verified payment binding exactly once
+      description: >-
+        The website re-fetches the authoritative plan and rejects amount, currency, or
+        plan-version mismatches. Provider order, payment evidence, and demo bindings are
+        unique. The legacy subscription mutation, activation record, idempotency result,
+        and website outbox event commit in one database transaction.
+      x-required-scope: demo:subscription:write
       parameters:
         - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ActivationRequest'}
       responses:
-        '200': {description: Existing or newly applied activation}
-        '409': {description: Idempotency key reused with different binding}
+        '200':
+          description: A separately keyed request found an identical activation already applied.
+          headers: *idempotentSuccessHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/ExistingActivationResult'}}
+                unevaluatedProperties: false
+        '201':
+          description: Activation newly applied, or the original 201 result replayed for the same key and payload.
+          headers: *idempotentSuccessHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/NewActivationResult'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '409': {$ref: '#/components/responses/ConflictError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '503': {$ref: '#/components/responses/UnavailableError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /demos/{demo}/projection:
+    parameters: *hmacParameters
+    put:
+      tags: [Demos]
+      operationId: updateDemoProjection
+      summary: Create or optimistically update the website demo projection
+      description: >-
+        expected_version must be zero for creation and must equal the stored projection
+        version for updates. The projection and outbox event commit exactly once.
+      x-required-scope: demo:projection:write
+      parameters:
+        - {$ref: '#/components/parameters/DemoPath'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DemoProjectionRequest'}
+      responses:
+        '200':
+          description: Existing projection updated, or the original 200 result replayed.
+          headers: *idempotentSuccessHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/DemoProjectionResult'}}
+                unevaluatedProperties: false
+        '201':
+          description: Projection created, or the original 201 result replayed.
+          headers: *idempotentSuccessHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/DemoProjectionResult'}}
+                unevaluatedProperties: false
+        '409': {$ref: '#/components/responses/ConflictError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
+  /demos/{demo}/onboarding-status:
+    parameters: *hmacParameters
+    post:
+      tags: [Demos]
+      operationId: recordOnboardingStatus
+      summary: Project an onboarding status for an existing demo projection
+      x-required-scope: demo:onboarding:write
+      parameters:
+        - {$ref: '#/components/parameters/DemoPath'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/OnboardingStatusRequest'}
+      responses:
+        '200':
+          description: Onboarding status recorded, or the original result replayed.
+          headers: *idempotentSuccessHeaders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    required: [data]
+                    properties: {data: {$ref: '#/components/schemas/OnboardingStatusResult'}}
+                unevaluatedProperties: false
+        '404': {$ref: '#/components/responses/NotFoundError'}
+        '409': {$ref: '#/components/responses/ConflictError'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaTypeError'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        default: {$ref: '#/components/responses/GatewayError'}
+
 components:
   securitySchemes:
-    serviceAuth: {type: http, scheme: bearer, bearerFormat: JWT}
+    websiteHmac:
+      type: apiKey
+      in: header
+      name: X-NXTutors-Signature
+      description: >-
+        HMAC security is a compound scheme: all X-NXTutors-* headers declared on each
+        path are required. This value is v1= plus a 64-character lowercase hexadecimal
+        HMAC-SHA256 digest of the canonical request documented by x-hmac-canonicalization.
+
   parameters:
+    HmacKeyId:
+      name: X-NXTutors-Key-Id
+      in: header
+      required: true
+      schema: {type: string, pattern: '^[A-Za-z0-9._-]{1,64}$'}
+    HmacTimestamp:
+      name: X-NXTutors-Timestamp
+      in: header
+      required: true
+      description: Unix epoch seconds within the configured replay window plus clock-skew allowance.
+      schema: {type: string, pattern: '^[0-9]+$'}
+    HmacNonce:
+      name: X-NXTutors-Nonce
+      in: header
+      required: true
+      description: Unique for the key ID during the durable replay window.
+      schema: {type: string, pattern: '^[A-Za-z0-9._:-]{16,128}$'}
+    HmacSource:
+      name: X-NXTutors-Source
+      in: header
+      required: true
+      schema: {type: string, const: demo-command-center}
+    HmacAudience:
+      name: X-NXTutors-Audience
+      in: header
+      required: true
+      schema: {type: string, const: nxtutors-website-gateway}
+    HmacScopes:
+      name: X-NXTutors-Scopes
+      in: header
+      required: true
+      description: >-
+        One to 32 allowed scope tokens separated by whitespace. The operation's
+        x-required-scope token must be present. Unique tokens are sorted
+        lexicographically and joined with one space in the canonical request.
+      schema:
+        type: string
+        minLength: 1
+        pattern: '^[a-z][a-z0-9:-]{0,63}(\s+[a-z][a-z0-9:-]{0,63}){0,31}$'
+    HmacSignature:
+      name: X-NXTutors-Signature
+      in: header
+      required: true
+      schema: {type: string, pattern: '^v1=[a-f0-9]{64}$'}
+    RequestId:
+      name: X-Request-ID
+      in: header
+      required: false
+      description: Caller-supplied UUID; the gateway generates one when absent or invalid.
+      schema: {type: string, format: uuid}
     IdempotencyKey:
       name: Idempotency-Key
       in: header
       required: true
-      schema: {type: string, minLength: 8, maxLength: 255}
+      description: >-
+        Operation-scoped durable key. Reuse with a different canonical payload returns
+        IDEMPOTENCY_KEY_REUSED; a completed identical request replays its original body and status.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 255
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{7,254}$'
+    RegisterPath:
+      name: register
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NumericReference'}
+    TutorPath:
+      name: tutor
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NumericReference'}
+    PlanPath:
+      name: plan
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/NumericReference'}
+    DemoPath:
+      name: demo
+      in: path
+      required: true
+      schema: {type: string, minLength: 1, maxLength: 100}
+    RegisterRefQuery:
+      name: register_ref
+      in: query
+      schema: {$ref: '#/components/schemas/NumericReference'}
+    UserRefQuery:
+      name: user_ref
+      in: query
+      schema: {type: string, minLength: 1, maxLength: 255}
+    SubjectQuery:
+      name: subject
+      in: query
+      schema: {type: string, maxLength: 160}
+    BoardQuery:
+      name: board
+      in: query
+      schema: {type: string, maxLength: 160}
+    ClassQuery:
+      name: class
+      in: query
+      schema: {type: string, maxLength: 160}
+    ModeQuery:
+      name: mode
+      in: query
+      schema: {type: string, maxLength: 100}
+    CityQuery:
+      name: city
+      in: query
+      schema: {type: string, maxLength: 100}
+    DistrictQuery:
+      name: district
+      in: query
+      schema: {type: string, maxLength: 100}
+    StateQuery:
+      name: state
+      in: query
+      schema: {type: string, maxLength: 100}
+    ClassTypeQuery:
+      name: class_type
+      in: query
+      schema: {type: string, maxLength: 100}
+    PageQuery:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 1000, default: 1}
+    PerPageQuery:
+      name: per_page
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+
+  headers:
+    RequestIdResponse:
+      description: Correlation UUID accepted from the caller or generated by the gateway.
+      schema: {type: string, format: uuid}
+    CacheControlResponse:
+      description: Sensitive internal responses are not cacheable.
+      schema: {type: string, const: no-store}
+    ContentTypeOptionsResponse:
+      schema: {type: string, const: nosniff}
+    IdempotencyReplayedResponse:
+      description: True only when the durable original result was replayed.
+      schema: {type: string, enum: ['true', 'false']}
+
+  responses:
+    GatewayError:
+      description: Auth, scope, replay, size, audit, throttling, availability, or internal gateway failure.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    ValidationError:
+      description: VALIDATION_FAILED, LIFECYCLE_STATE_INVALID, or IDEMPOTENCY_KEY_INVALID.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    NotFoundError:
+      description: Requested safe projection, tutor, plan quote, website user, or demo projection was not found.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    ConflictError:
+      description: Idempotency, optimistic version, replay, plan binding, or activation binding conflict.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    UnsupportedMediaTypeError:
+      description: POST, PUT, and PATCH bodies must use application/json.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+    UnavailableError:
+      description: Required key, audit, schema, subscription store, or configured activation policy is unavailable.
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ErrorEnvelope'}
+
+  schemas:
+    NumericReference:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+    NullableString:
+      type: [string, 'null']
+    SourceVersion:
+      type: string
+      pattern: '^[a-f0-9]{64}$'
+    CorrelationId:
+      type: string
+      format: uuid
+    DemoReference:
+      type: string
+      minLength: 8
+      maxLength: 100
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._:-]{7,99}$'
+    MoneyMinor:
+      type: integer
+      minimum: 0
+    Currency:
+      type: string
+      pattern: '^[A-Z]{3}$'
+    SuccessEnvelope:
+      type: object
+      required: [schema_version, generated_at, request_id]
+      properties:
+        schema_version: {type: string, const: website-gateway.v1}
+        generated_at: {type: string, format: date-time}
+        request_id: {type: string, format: uuid}
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [schema_version, request_id, error]
+      properties:
+        schema_version: {type: string, const: website-gateway.v1}
+        request_id: {type: string}
+        error:
+          type: object
+          additionalProperties: false
+          required: [code]
+          properties:
+            code:
+              type: string
+              enum:
+                - GATEWAY_DISABLED
+                - REQUEST_TOO_LARGE
+                - UNSUPPORTED_MEDIA_TYPE
+                - AUTH_INVALID
+                - AUTH_TIMESTAMP_EXPIRED
+                - AUTH_CONTEXT_INVALID
+                - AUTH_KEY_UNAVAILABLE
+                - AUTH_SCOPE_CLAIM_INVALID
+                - AUTH_REPLAY_DETECTED
+                - AUTH_SCOPE_REQUIRED
+                - VALIDATION_FAILED
+                - PROFILE_NOT_FOUND
+                - TUTOR_NOT_FOUND
+                - TUTOR_CONTACT_NOT_FOUND
+                - PLAN_QUOTE_NOT_FOUND
+                - WEBSITE_USER_NOT_FOUND
+                - IDEMPOTENCY_KEY_INVALID
+                - IDEMPOTENCY_KEY_REUSED
+                - IDEMPOTENCY_OPERATION_IN_PROGRESS
+                - IDEMPOTENCY_RECORD_INVALID
+                - PAYMENT_ACTIVATION_BINDING_CONFLICT
+                - PLAN_NOT_ELIGIBLE
+                - PAYMENT_PLAN_BINDING_MISMATCH
+                - SUBSCRIPTION_STORE_UNAVAILABLE
+                - SUBSCRIPTION_SCHEMA_UNSUPPORTED
+                - SUBSCRIPTION_POLICY_UNCONFIGURED
+                - SUBSCRIPTION_ACTIVATION_FAILED
+                - PROFILE_PHONE_NOT_FOUND
+                - TUTOR_PHONE_NOT_FOUND
+                - LIFECYCLE_STATE_INVALID
+                - PROJECTION_VERSION_CONFLICT
+                - DEMO_PROJECTION_NOT_FOUND
+                - AUDIT_UNAVAILABLE
+                - INTERNAL_ERROR
+            details:
+              type: object
+              additionalProperties: true
+
+    Location:
+      type: object
+      additionalProperties: false
+      required: [city, district, state, pincode]
+      properties:
+        city: {$ref: '#/components/schemas/NullableString'}
+        district: {$ref: '#/components/schemas/NullableString'}
+        state: {$ref: '#/components/schemas/NullableString'}
+        pincode: {$ref: '#/components/schemas/NullableString'}
+    MinimumProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - register_ref
+        - user_ref
+        - display_name
+        - account_status
+        - user_type
+        - join_as
+        - learner_class
+        - class_mode
+        - budget
+        - location
+        - source_version
+      properties:
+        register_ref: {type: string}
+        user_ref: {$ref: '#/components/schemas/NullableString'}
+        display_name: {$ref: '#/components/schemas/NullableString'}
+        account_status: {$ref: '#/components/schemas/NullableString'}
+        user_type: {$ref: '#/components/schemas/NullableString'}
+        join_as: {$ref: '#/components/schemas/NullableString'}
+        learner_class: {$ref: '#/components/schemas/NullableString'}
+        class_mode: {$ref: '#/components/schemas/NullableString'}
+        budget: {$ref: '#/components/schemas/NullableString'}
+        location: {$ref: '#/components/schemas/Location'}
+        source_version: {$ref: '#/components/schemas/SourceVersion'}
+    IdentityResolution:
+      type: object
+      additionalProperties: false
+      required: [status, matches]
+      properties:
+        status: {type: string, enum: [not_found, resolved, ambiguous]}
+        matches:
+          type: array
+          maxItems: 2
+          items: {$ref: '#/components/schemas/MinimumProfile'}
+
+    TutorCourse:
+      type: object
+      additionalProperties: false
+      required: [source, source_ref, boards, classes, subjects, modes, source_version]
+      properties:
+        source: {type: string}
+        source_ref: {$ref: '#/components/schemas/NullableString'}
+        boards: {type: array, items: {type: string, maxLength: 160}}
+        classes: {type: array, items: {type: string, maxLength: 160}}
+        subjects: {type: array, items: {type: string, maxLength: 160}}
+        modes: {type: array, items: {type: string, maxLength: 160}}
+        source_version: {$ref: '#/components/schemas/SourceVersion'}
+    QualityIndicators:
+      type: object
+      additionalProperties: false
+      required: [expertise, patience, reliability, communication]
+      properties:
+        expertise: {type: [number, 'null']}
+        patience: {type: [number, 'null']}
+        reliability: {type: [number, 'null']}
+        communication: {type: [number, 'null']}
+    ReviewSummary:
+      type: object
+      additionalProperties: false
+      required: [approval_policy, approved_review_count, average_rating, quality_indicators, approved_quotes]
+      properties:
+        approval_policy: {type: string, const: explicit-approved-only}
+        approved_review_count: {type: integer, minimum: 0}
+        average_rating: {type: [number, 'null']}
+        quality_indicators: {$ref: '#/components/schemas/QualityIndicators'}
+        approved_quotes:
+          type: array
+          uniqueItems: true
+          items: {type: string, maxLength: 500}
+    TutorProjection:
+      type: object
+      additionalProperties: false
+      required:
+        - tutor_ref
+        - display_name
+        - profile_summary
+        - experience
+        - education
+        - location
+        - courses
+        - review_summary
+        - availability_status
+        - source_version
+      properties:
+        tutor_ref: {type: string}
+        display_name: {$ref: '#/components/schemas/NullableString'}
+        profile_summary: {type: [string, 'null'], maxLength: 1000}
+        experience: {$ref: '#/components/schemas/NullableString'}
+        education: {$ref: '#/components/schemas/NullableString'}
+        location: {$ref: '#/components/schemas/Location'}
+        courses: {type: array, items: {$ref: '#/components/schemas/TutorCourse'}}
+        review_summary: {$ref: '#/components/schemas/ReviewSummary'}
+        availability_status: {type: string, const: unknown}
+        source_version: {$ref: '#/components/schemas/SourceVersion'}
+    TutorCandidatePage:
+      type: object
+      additionalProperties: false
+      required: [items, page, per_page, has_more, source_tables]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/TutorProjection'}}
+        page: {type: integer, minimum: 1, maximum: 1000}
+        per_page: {type: integer, minimum: 1, maximum: 100}
+        has_more: {type: boolean}
+        source_tables: {type: array, uniqueItems: true, items: {type: string}}
+    ContactResolveRequest:
+      type: object
+      additionalProperties: false
+      required: [demo_ref, purpose]
+      properties:
+        demo_ref: {$ref: '#/components/schemas/DemoReference'}
+        purpose: {type: string, enum: [demo_invitation, demo_reschedule, demo_cancellation]}
+    PhoneResolveRequest:
+      type: object
+      additionalProperties: false
+      required: [demo_ref, purpose]
+      properties:
+        demo_ref: {$ref: '#/components/schemas/DemoReference'}
+        purpose:
+          type: string
+          enum: [demo_tutor_acceptance, demo_session_link, demo_reschedule, demo_cancellation]
+    TutorContact:
+      type: object
+      additionalProperties: false
+      required: [tutor_ref, email, email_reference, purpose, demo_ref]
+      properties:
+        tutor_ref: {type: string}
+        email: {type: string, format: email}
+        email_reference: {type: string}
+        purpose: {type: string, enum: [demo_invitation, demo_reschedule, demo_cancellation]}
+        demo_ref: {$ref: '#/components/schemas/DemoReference'}
+    WebsitePhoneRecipient:
+      type: object
+      additionalProperties: false
+      required:
+        - recipient_ref
+        - phone_reference
+        - channel
+        - purpose
+        - demo_ref
+        - masked_phone
+        - source_version
+      properties:
+        register_ref: {type: [string, 'null']}
+        tutor_ref: {type: [string, 'null']}
+        user_ref: {type: [string, 'null']}
+        recipient_ref: {type: string, pattern: '^register:[1-9][0-9]*:phone$'}
+        phone_reference: {type: string, pattern: '^register:[1-9][0-9]*:phone$'}
+        channel: {type: string, const: whatsapp}
+        purpose:
+          type: string
+          enum: [demo_tutor_acceptance, demo_session_link, demo_reschedule, demo_cancellation]
+        demo_ref: {$ref: '#/components/schemas/DemoReference'}
+        masked_phone: {type: string, pattern: '^\*+[0-9]{4}$'}
+        source_version: {$ref: '#/components/schemas/SourceVersion'}
+    ReferenceCatalog:
+      type: object
+      additionalProperties: false
+      required: [subjects, classes, boards, modes, locations]
+      properties:
+        subjects: {type: array, uniqueItems: true, items: {type: string}}
+        classes: {type: array, uniqueItems: true, items: {type: string}}
+        boards: {type: array, uniqueItems: true, items: {type: string}}
+        modes: {type: array, uniqueItems: true, items: {type: string}}
+        locations: {type: array, uniqueItems: true, items: {type: string}}
+    RegionMapping:
+      type: object
+      additionalProperties: false
+      properties:
+        region_ref: {type: string}
+        region_name: {type: string}
+        states: {type: array, items: {type: string}}
+        districts: {type: array, items: {type: string}}
+        cities: {type: array, items: {type: string}}
+        pincodes: {type: array, items: {type: string}}
+    RegionMappings:
+      type: object
+      additionalProperties: false
+      required: [mapping_version, mappings, configured]
+      properties:
+        mapping_version: {type: string}
+        mappings: {type: array, items: {$ref: '#/components/schemas/RegionMapping'}}
+        configured: {type: boolean}
+    SocialProofItem:
+      type: object
+      additionalProperties: false
+      required: [tutor_ref, quote, rating]
+      properties:
+        tutor_ref: {type: string}
+        quote: {type: string, maxLength: 500}
+        rating: {type: [number, 'null']}
+    SocialProofCollection:
+      type: object
+      additionalProperties: false
+      required: [items, approval_policy]
+      properties:
+        items: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/SocialProofItem'}}
+        approval_policy: {type: string, const: explicit-approved-only}
+
+    PlanFields:
+      type: object
+      required: [plan_id, name, amount_minor, currency, duration_days, eligible, updated_at, plan_version]
+      properties:
+        plan_id: {type: string}
+        name: {$ref: '#/components/schemas/NullableString'}
+        amount_minor: {$ref: '#/components/schemas/MoneyMinor'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        duration_days: {type: [integer, 'null'], minimum: 0}
+        eligible: {type: boolean}
+        updated_at: {$ref: '#/components/schemas/NullableString'}
+        plan_version: {$ref: '#/components/schemas/SourceVersion'}
+    Plan:
+      allOf:
+        - $ref: '#/components/schemas/PlanFields'
+      unevaluatedProperties: false
+    PlanCollection:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Plan'}}
+    PlanQuote:
+      allOf:
+        - $ref: '#/components/schemas/PlanFields'
+        - type: object
+          required: [user_ref, expires_at]
+          properties:
+            user_ref: {type: string, minLength: 1, maxLength: 255}
+            expires_at: {type: string, format: date-time}
+      unevaluatedProperties: false
+
+    LegacyScalar:
+      type: [string, number, boolean, 'null']
+    LegacySubscriptionRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id: {$ref: '#/components/schemas/LegacyScalar'}
+        user_id: {$ref: '#/components/schemas/LegacyScalar'}
+        register_id: {$ref: '#/components/schemas/LegacyScalar'}
+        plan_id: {$ref: '#/components/schemas/LegacyScalar'}
+        subscription_plan_id: {$ref: '#/components/schemas/LegacyScalar'}
+        status: {$ref: '#/components/schemas/LegacyScalar'}
+        payment_status: {$ref: '#/components/schemas/LegacyScalar'}
+        start_date: {$ref: '#/components/schemas/LegacyScalar'}
+        end_date: {$ref: '#/components/schemas/LegacyScalar'}
+        expires_at: {$ref: '#/components/schemas/LegacyScalar'}
+        type: {$ref: '#/components/schemas/LegacyScalar'}
+        subscription_type: {$ref: '#/components/schemas/LegacyScalar'}
+        order_id: {$ref: '#/components/schemas/LegacyScalar'}
+        provider_order_ref: {$ref: '#/components/schemas/LegacyScalar'}
+        updated_at: {$ref: '#/components/schemas/LegacyScalar'}
+    LegacyOrderRecord:
+      type: object
+      additionalProperties: false
+      properties:
+        id: {$ref: '#/components/schemas/LegacyScalar'}
+        user_id: {$ref: '#/components/schemas/LegacyScalar'}
+        register_id: {$ref: '#/components/schemas/LegacyScalar'}
+        plan_id: {$ref: '#/components/schemas/LegacyScalar'}
+        subscription_plan_id: {$ref: '#/components/schemas/LegacyScalar'}
+        status: {$ref: '#/components/schemas/LegacyScalar'}
+        payment_status: {$ref: '#/components/schemas/LegacyScalar'}
+        order_id: {$ref: '#/components/schemas/LegacyScalar'}
+        provider_order_ref: {$ref: '#/components/schemas/LegacyScalar'}
+        created_at: {$ref: '#/components/schemas/LegacyScalar'}
+        updated_at: {$ref: '#/components/schemas/LegacyScalar'}
+    SubscriptionState:
+      type: object
+      additionalProperties: false
+      required: [website_user_ref, subscriptions, orders]
+      properties:
+        website_user_ref: {type: string}
+        subscriptions: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/LegacySubscriptionRecord'}}
+        orders: {type: array, maxItems: 50, items: {$ref: '#/components/schemas/LegacyOrderRecord'}}
+
+    ActivationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - demo_ref
+        - website_user_ref
+        - plan_id
+        - plan_version
+        - amount_minor
+        - currency
+        - provider_order_ref
+        - payment_evidence_ref
+        - payment_verified_at
+        - correlation_id
+      properties:
+        demo_ref: {$ref: '#/components/schemas/DemoReference'}
+        website_user_ref: {type: string, minLength: 1, maxLength: 255}
+        plan_id: {type: integer, minimum: 1}
+        plan_version: {$ref: '#/components/schemas/SourceVersion'}
+        amount_minor: {$ref: '#/components/schemas/MoneyMinor'}
+        currency: {$ref: '#/components/schemas/Currency'}
+        provider_order_ref:
+          type: string
+          minLength: 8
+          maxLength: 255
+          pattern: '^[A-Za-z0-9._:-]+$'
+        payment_evidence_ref:
+          type: string
+          minLength: 8
+          maxLength: 255
+          pattern: '^[A-Za-z0-9._:-]+$'
+        payment_verified_at: {type: string, format: date-time}
+        correlation_id: {$ref: '#/components/schemas/CorrelationId'}
+    ExistingActivationResult:
+      type: object
+      additionalProperties: false
+      required: [activation_ref, subscription_ref, status, already_applied]
+      properties:
+        activation_ref: {type: string}
+        subscription_ref: {type: string}
+        status: {type: string}
+        already_applied: {type: boolean, const: true}
+    NewActivationResult:
+      type: object
+      additionalProperties: false
+      required: [activation_ref, subscription_ref, status, already_applied, outbox_event_id]
+      properties:
+        activation_ref: {type: string}
+        subscription_ref: {type: string}
+        status: {type: string, const: applied}
+        already_applied: {type: boolean, const: false}
+        outbox_event_id: {type: string, format: uuid}
+
+    DemoLifecycleState:
+      type: string
+      enum:
+        - intake
+        - requirements_complete
+        - tutor_shortlisted
+        - slot_proposed
+        - slot_held
+        - awaiting_confirmation
+        - scheduled
+        - reschedule_pending
+        - cancelled
+        - completed
+        - no_show
+        - conversion_pending
+        - payment_pending
+        - paid
+        - onboarding_handoff
+        - onboarding_complete
+        - human_handoff
+        - failed
+    DemoProjectionRequest:
+      type: object
+      additionalProperties: false
+      required: [expected_version, lifecycle_state, occurred_at, correlation_id]
+      properties:
+        expected_version: {type: integer, minimum: 0}
+        demo_lead_ref: {type: [integer, 'null'], minimum: 1}
+        website_user_ref: {type: [string, 'null'], maxLength: 255}
+        lifecycle_state: {$ref: '#/components/schemas/DemoLifecycleState'}
+        occurred_at: {type: string, format: date-time}
+        correlation_id: {$ref: '#/components/schemas/CorrelationId'}
+    DemoProjectionResult:
+      type: object
+      additionalProperties: false
+      required: [demo_ref, projection_version, lifecycle_state, outbox_event_id]
+      properties:
+        demo_ref: {type: string}
+        projection_version: {type: integer, minimum: 1}
+        lifecycle_state: {$ref: '#/components/schemas/DemoLifecycleState'}
+        outbox_event_id: {type: string, format: uuid}
+    OnboardingStatus:
+      type: string
+      enum: [pending, accepted, in_progress, completed, failed, human_review]
+    OnboardingStatusRequest:
+      type: object
+      additionalProperties: false
+      required: [status, correlation_id]
+      properties:
+        status: {$ref: '#/components/schemas/OnboardingStatus'}
+        onboarding_ref: {type: [string, 'null'], maxLength: 160}
+        correlation_id: {$ref: '#/components/schemas/CorrelationId'}
+    OnboardingStatusResult:
+      type: object
+      additionalProperties: false
+      required: [demo_ref, onboarding_status, outbox_event_id]
+      properties:
+        demo_ref: {type: string}
+        onboarding_status: {$ref: '#/components/schemas/OnboardingStatus'}
+        outbox_event_id: {type: string, format: uuid}

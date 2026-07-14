@@ -33,9 +33,10 @@ abstract class TestCase extends Orchestra
         ]);
         $scopes = [
             'demo:identity:read', 'demo:profiles:read', 'demo:tutors:read',
-            'demo:tutor-contact:read', 'demo:reference:read', 'demo:regions:read',
-            'demo:social-proof:read', 'demo:plans:read', 'demo:subscriptions:read',
-            'demo:subscription:write', 'demo:projection:write', 'demo:onboarding:write',
+            'demo:profile-phone:read', 'demo:tutor-contact:read', 'demo:tutor-phone:read',
+            'demo:reference:read', 'demo:regions:read', 'demo:social-proof:read',
+            'demo:plans:read', 'demo:subscriptions:read', 'demo:subscription:write',
+            'demo:projection:write', 'demo:onboarding:write',
         ];
         $app['config']->set('demo_command_center.enabled', true);
         $app['config']->set('demo_command_center.source', 'demo-command-center');

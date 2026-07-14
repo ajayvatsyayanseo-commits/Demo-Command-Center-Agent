@@ -8,7 +8,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
 class EncryptionConfigurationError(ValueError):
-    pass
+    """Raised when the field-encryption key cannot be used safely."""
 
 
 class PayloadCipher:

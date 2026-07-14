@@ -35,10 +35,10 @@ provider "aws" {
 locals {
   subjects = {
     terraform-plan = ["environment:dev", "environment:staging", "environment:prod"]
-    deploy-dev      = ["environment:dev"]
-    deploy-staging  = ["environment:staging"]
-    deploy-prod     = ["environment:production"]
-    rollback        = ["environment:dev", "environment:staging", "environment:production"]
+    deploy-dev     = ["environment:dev"]
+    deploy-staging = ["environment:staging"]
+    deploy-prod    = ["environment:production"]
+    rollback       = ["environment:dev", "environment:staging", "environment:production"]
   }
   roles = {
     for name, policy in var.role_policies : name => {

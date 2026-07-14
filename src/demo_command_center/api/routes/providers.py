@@ -38,7 +38,7 @@ def _object_payload(raw: bytes) -> dict[str, Any]:
         ) from exc
     if not isinstance(value, dict):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Provider payload must be an object",
         )
     return value
@@ -51,6 +51,22 @@ def _nested_string(payload: dict[str, Any], *path: str) -> str | None:
             return None
         value = value.get(part)
     return value[:255] if isinstance(value, str) and value else None
+
+
+def _nested_reference(payload: dict[str, Any], *path: str) -> str | None:
+    value: Any = payload
+    for part in path:
+        if isinstance(value, dict):
+            value = value.get(part)
+        elif isinstance(value, list) and part.isdigit():
+            index = int(part)
+            value = value[index] if index < len(value) else None
+        else:
+            return None
+    if isinstance(value, bool) or not isinstance(value, str | int):
+        return None
+    reference = str(value).strip()
+    return reference[:255] if reference else None
 
 
 def _provider_envelope(
@@ -96,6 +112,7 @@ async def verify_meta_webhook(
         return PlainTextResponse(hub_challenge)
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification failed")
 
+
 @router.post(
     "/meta/whatsapp",
     response_model=IngressReceipt,
@@ -115,7 +132,7 @@ async def receive_meta_webhook(
     ):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
     payload = _object_payload(raw)
-    provider_event_id = _nested_string(payload, "entry", "0") or hashlib.sha256(raw).hexdigest()
+    provider_event_id = hashlib.sha256(raw).hexdigest()
     envelope = _provider_envelope(
         request=request,
         container=container,
@@ -153,11 +170,14 @@ async def receive_cashfree_webhook(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid signature")
     payload = _object_payload(raw)
     provider_reference = (
-        _nested_string(payload, "data", "payment", "cf_payment_id")
-        or _nested_string(payload, "data", "order", "order_id")
+        _nested_reference(payload, "data", "payment", "cf_payment_id")
+        or _nested_reference(payload, "data", "order", "order_id")
         or hashlib.sha256(raw).hexdigest()
     )
-    provider_event_id = f"{_nested_string(payload, 'type') or 'unknown'}:{provider_reference}"
+    provider_event_id = (
+        f"{_nested_string(payload, 'type') or 'unknown'}:{provider_reference}:"
+        f"{hashlib.sha256(raw).hexdigest()[:16]}"
+    )
     try:
         timestamp = int(x_webhook_timestamp or "0")
         if timestamp > 10_000_000_000:

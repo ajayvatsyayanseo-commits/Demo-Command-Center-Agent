@@ -1,0 +1,12 @@
+{
+  "event_id": "f6e89b95-c1cc-5a52-b964-0a3cdd79c71f",
+  "event_type": "outbound.delivery.requested.v1",
+  "demo_id": "9e383b38-5475-4815-a966-5a09c5a626d9",
+  "recipient_ref": "conversation-opaque-001",
+  "template_or_message_ref": "demo.collect_requirements.v1",
+  "variables": {"missing_fields": "subject,preferred_times"},
+  "message_category": "service",
+  "service_window_expires_at": "2026-07-14T06:00:00Z",
+  "send_key": "demo-requirements:f6e89b95-c1cc-5a52-b964-0a3cdd79c71f",
+  "correlation_id": "corr-demo-001"
+}

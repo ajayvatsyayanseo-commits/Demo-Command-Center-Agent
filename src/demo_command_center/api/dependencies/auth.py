@@ -21,7 +21,8 @@ async def _authenticate(
 ) -> InternalIdentity:
     settings = container.settings
     configured_legacy = settings.lead_intake_shared_secret.get_secret_value()
-    if settings.internal_legacy_shared_secret_enabled and configured_legacy and legacy_secret:
+    legacy_configured = settings.internal_legacy_shared_secret_enabled and bool(configured_legacy)
+    if legacy_configured and legacy_secret:
         if hmac.compare_digest(configured_legacy.encode(), legacy_secret.encode()):
             identity = InternalIdentity(
                 source="legacy-lead-intake",
@@ -32,10 +33,15 @@ async def _authenticate(
             )
             request.state.internal_identity = identity
             return identity
-    if not container.internal_auth.configured:
+    if not container.internal_auth.configured and not legacy_configured:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Internal authentication is not configured",
+        )
+    if not container.internal_auth.configured:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Internal authentication failed",
         )
     try:
         identity = await container.internal_auth.verify(

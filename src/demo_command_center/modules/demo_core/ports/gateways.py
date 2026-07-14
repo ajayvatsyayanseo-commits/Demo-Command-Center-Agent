@@ -4,7 +4,7 @@ from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from demo_command_center.modules.demo_core.domain.identifiers import DemoId, IdempotencyKey
 
@@ -68,12 +68,19 @@ class SchedulerPort(Protocol):
 
 class MessagingPort(Protocol):
     async def request_delivery(
-        self,
-        recipient_ref: str,
-        template_or_message_ref: str,
-        variables: Mapping[str, str],
-        idempotency_key: IdempotencyKey,
+        self, request: OutboundMessageRequest, idempotency_key: IdempotencyKey
     ) -> str: ...
+
+
+@dataclass(frozen=True, slots=True)
+class OutboundMessageRequest:
+    demo_id: DemoId
+    recipient_ref: str
+    template_or_message_ref: str
+    variables: Mapping[str, str]
+    message_category: Literal["service", "utility", "marketing"]
+    service_window_expires_at: datetime
+    correlation_id: str
 
 
 class EmailPort(Protocol):
@@ -99,9 +106,17 @@ class CalendarPort(Protocol):
         attendee_refs: Sequence[str],
         conference_request_id: str,
         idempotency_key: IdempotencyKey,
-    ) -> str: ...
+    ) -> CalendarEventResult: ...
 
     async def cancel_event(self, event_ref: str, idempotency_key: IdempotencyKey) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class CalendarEventResult:
+    provider_event_id: str
+    provider_etag: str | None
+    conference_status: str
+    meeting_uri: str | None
 
 
 class PaymentPort(Protocol):
@@ -111,7 +126,7 @@ class PaymentPort(Protocol):
         idempotency_key: IdempotencyKey,
     ) -> ProviderOrderResult: ...
 
-    async def fetch_verified_status(self, provider_order_id: str) -> ProviderPaymentStatus: ...
+    async def fetch_verified_status(self, order_reference: str) -> ProviderPaymentStatus: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +138,7 @@ class PaymentOrderRequest:
     customer_phone: str
     purpose: str
     correlation_id: str
+    expires_at: datetime
     return_url: str | None = None
 
 
@@ -156,6 +172,20 @@ class TutorSearchQuery:
 
 
 @dataclass(frozen=True, slots=True)
+class WebsitePhoneRecipient:
+    register_ref: str | None
+    tutor_ref: str | None
+    user_ref: str | None
+    recipient_ref: str
+    phone_reference: str
+    masked_phone: str
+    channel: str
+    purpose: str
+    demo_ref: str
+    source_version: str
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedSubscriptionActivation:
     demo_ref: str
     website_user_ref: str
@@ -173,6 +203,14 @@ class WebsiteGatewayPort(Protocol):
     async def search_tutor_candidates(
         self, query: TutorSearchQuery
     ) -> Sequence[Mapping[str, Any]]: ...
+
+    async def resolve_tutor_phone_recipient(
+        self, tutor_ref: str, *, demo_ref: str, purpose: str
+    ) -> WebsitePhoneRecipient: ...
+
+    async def resolve_profile_phone_recipient(
+        self, register_ref: str, *, demo_ref: str, purpose: str
+    ) -> WebsitePhoneRecipient: ...
 
     async def get_plan_quote(self, plan_ref: str, customer_ref: str) -> Mapping[str, Any]: ...
 

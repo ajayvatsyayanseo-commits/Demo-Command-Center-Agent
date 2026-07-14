@@ -76,6 +76,43 @@ final class TutorProjectionTest extends TestCase
         self::assertArrayNotHasKey('phone', $body['data']);
     }
 
+    public function testPhoneRecipientResolutionRequiresDedicatedScopesAndMasksTheRegisterPhone(): void
+    {
+        $payload = ['demo_ref' => 'demo-contact-0001', 'purpose' => 'demo_tutor_acceptance'];
+        $denied = $this->signedRequest(
+            'POST',
+            '/internal/api/v1/demo-command-center/tutors/2/phone-resolve',
+            ['demo:tutors:read'],
+            $payload,
+        );
+        self::assertSame(403, $denied->getStatusCode());
+
+        $teacher = $this->signedRequest(
+            'POST',
+            '/internal/api/v1/demo-command-center/tutors/2/phone-resolve',
+            ['demo:tutor-phone:read'],
+            $payload,
+        );
+        self::assertSame(200, $teacher->getStatusCode(), (string) $teacher->getContent());
+        self::assertStringNotContainsString('+919000000002', (string) $teacher->getContent());
+        $teacherBody = json_decode((string) $teacher->getContent(), true, 32, JSON_THROW_ON_ERROR);
+        self::assertSame('register:2:phone', $teacherBody['data']['recipient_ref']);
+        self::assertSame('*********0002', $teacherBody['data']['masked_phone']);
+        self::assertSame('demo_tutor_acceptance', $teacherBody['data']['purpose']);
+
+        $student = $this->signedRequest(
+            'POST',
+            '/internal/api/v1/demo-command-center/profiles/1/phone-resolve',
+            ['demo:profile-phone:read'],
+            ['demo_ref' => 'demo-contact-0001', 'purpose' => 'demo_session_link'],
+        );
+        self::assertSame(200, $student->getStatusCode(), (string) $student->getContent());
+        self::assertStringNotContainsString('+919000000001', (string) $student->getContent());
+        $studentBody = json_decode((string) $student->getContent(), true, 32, JSON_THROW_ON_ERROR);
+        self::assertSame('register:1:phone', $studentBody['data']['recipient_ref']);
+        self::assertSame('demo_session_link', $studentBody['data']['purpose']);
+    }
+
     public function testSocialProofContainsOnlyExplicitlyApprovedContent(): void
     {
         $response = $this->signedRequest(

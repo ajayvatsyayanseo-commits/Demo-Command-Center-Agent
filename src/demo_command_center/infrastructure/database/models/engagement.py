@@ -92,6 +92,10 @@ class CommunicationMessage(TimestampMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     approved_by: Mapped[str | None] = mapped_column(String(255))
     service_window_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class CommunicationDelivery(Base):
@@ -136,8 +140,10 @@ class ProviderRequest(TimestampMixin, Base):
 class ProviderWebhookEvent(Base):
     __tablename__ = "provider_webhook_events"
     __table_args__ = (
-        UniqueConstraint("provider", "provider_event_id"),
-        UniqueConstraint("provider", "payload_hash"),
+        UniqueConstraint(
+            "provider", "provider_event_id", name="uq_provider_webhook_provider_event"
+        ),
+        UniqueConstraint("provider", "payload_hash", name="uq_provider_webhook_payload_hash"),
         Index(
             "ix_provider_webhook_unprocessed",
             "received_at",
@@ -146,6 +152,7 @@ class ProviderWebhookEvent(Base):
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
     event_type: Mapped[str] = mapped_column(String(160), nullable=False)
@@ -160,6 +167,10 @@ class ProviderWebhookEvent(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="received")
     safe_error_code: Mapped[str | None] = mapped_column(String(100))
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class DemoOutcome(TimestampMixin, Base):
@@ -254,11 +265,41 @@ class ModelVersion(TimestampMixin, Base):
     promoted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class ModelEvaluation(Base):
+    __tablename__ = "model_evaluations"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "evaluation_type",
+            "subject_version",
+            "policy_reference",
+            "window_end",
+            name="uq_model_evaluation_window",
+        ),
+        Index("ix_model_evaluations_status_time", "tenant_id", "status", "evaluated_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    evaluation_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sample_size: Mapped[int] = mapped_column(Integer, nullable=False)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    threshold_breaches: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class ConversionPrediction(TimestampMixin, Base):
     __tablename__ = "conversion_predictions"
     __table_args__ = (
         UniqueConstraint("demo_case_id", "model_version_id", "feature_timestamp"),
-        CheckConstraint("probability >= 0 AND probability <= 1", name="prediction_probability_range"),
+        CheckConstraint(
+            "probability >= 0 AND probability <= 1", name="prediction_probability_range"
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

@@ -76,4 +76,4 @@ class SecurityHeadersMiddleware:
 
 
 class _RequestTooLargeError(Exception):
-    pass
+    """Stops request processing after the configured body limit is exceeded."""

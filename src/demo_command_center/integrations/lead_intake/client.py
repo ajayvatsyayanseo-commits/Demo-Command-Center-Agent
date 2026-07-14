@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from datetime import datetime
+from typing import Literal
+from uuid import UUID
 
 import httpx
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from demo_command_center.api.errors.taxonomy import ErrorCode, ServiceError
 from demo_command_center.integrations.http_security import (
@@ -12,6 +15,30 @@ from demo_command_center.integrations.http_security import (
     validate_provider_base_url,
 )
 from demo_command_center.modules.demo_core.domain.identifiers import IdempotencyKey
+
+
+class LeadIntakeDeliveryRequest(BaseModel):
+    """The complete, policy-relevant request sent to the sole WhatsApp owner."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_id: UUID
+    event_type: Literal["outbound.delivery.requested.v1"]
+    demo_id: UUID
+    recipient_ref: str = Field(min_length=1, max_length=255)
+    template_or_message_ref: str = Field(min_length=1, max_length=255)
+    variables: dict[str, str] = Field(max_length=50)
+    message_category: Literal["service", "utility", "marketing"]
+    service_window_expires_at: datetime
+    send_key: str = Field(min_length=8, max_length=255)
+    correlation_id: str = Field(min_length=1, max_length=128)
+
+    @field_validator("service_window_expires_at")
+    @classmethod
+    def require_aware_service_window(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("service_window_expires_at must be timezone-aware")
+        return value
 
 
 class LeadIntakeOutboundGateway:
@@ -41,17 +68,15 @@ class LeadIntakeOutboundGateway:
 
     async def request_delivery(
         self,
-        recipient_ref: str,
-        template_or_message_ref: str,
-        variables: Mapping[str, str],
+        request: LeadIntakeDeliveryRequest,
         idempotency_key: IdempotencyKey,
     ) -> str:
-        payload = {
-            "recipient_ref": recipient_ref,
-            "template_or_message_ref": template_or_message_ref,
-            "variables": dict(variables),
-            "idempotency_key": str(idempotency_key),
-        }
+        if request.send_key != str(idempotency_key):
+            raise ServiceError(
+                ErrorCode.POLICY_REJECTED,
+                "Outbound send metadata does not match its idempotency header",
+            )
+        payload = request.model_dump(mode="json")
         raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         headers = self._signer.headers(
             method="POST",
@@ -60,6 +85,7 @@ class LeadIntakeOutboundGateway:
             scopes=("whatsapp:send",),
             idempotency_key=str(idempotency_key),
         )
+        headers["X-Correlation-Id"] = request.correlation_id
         try:
             response = await self._client.post(
                 fixed_provider_url(self._base_url, self._PATH),
@@ -73,9 +99,10 @@ class LeadIntakeOutboundGateway:
                 ErrorCode.PROVIDER_UNAVAILABLE,
                 "The canonical outbound messaging gateway is unavailable",
             ) from exc
-        if not isinstance(result, dict) or not isinstance(result.get("message_id"), str):
+        message_id = result.get("message_id") if isinstance(result, dict) else None
+        if not isinstance(message_id, str):
             raise ServiceError(
                 ErrorCode.PROVIDER_RESPONSE_INVALID,
                 "The outbound messaging acknowledgement is invalid",
             )
-        return result["message_id"]
+        return message_id

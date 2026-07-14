@@ -10,7 +10,7 @@ from demo_command_center.security.authentication import canonical_request, sign_
 
 
 class UnsafeProviderUrl(ValueError):
-    pass
+    """Raised when a provider URL violates the fixed-destination policy."""
 
 
 def validate_provider_base_url(base_url: str, *, require_https: bool) -> str:
@@ -19,7 +19,7 @@ def validate_provider_base_url(base_url: str, *, require_https: bool) -> str:
         raise UnsafeProviderUrl("provider base URL uses a prohibited scheme")
     if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise UnsafeProviderUrl("provider base URL is malformed")
-    if parsed.hostname in {"0.0.0.0", "169.254.169.254"}:
+    if parsed.hostname in {"0.0.0.0", "169.254.169.254"}:  # noqa: S104 - URL validation
         raise UnsafeProviderUrl("provider base URL points to a prohibited host")
     return base_url.rstrip("/") + "/"
 

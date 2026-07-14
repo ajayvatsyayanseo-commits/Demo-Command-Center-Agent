@@ -8,10 +8,12 @@ from demo_command_center.modules.demo_core.ports.gateways import (
     LockPort,
     MessagingPort,
     OnboardingPort,
+    OutboundMessageRequest,
     PaymentPort,
     SchedulerPort,
     UnitOfWork,
     WebsiteGatewayPort,
+    WebsitePhoneRecipient,
 )
 
 __all__ = [
@@ -24,8 +26,10 @@ __all__ = [
     "LockPort",
     "MessagingPort",
     "OnboardingPort",
+    "OutboundMessageRequest",
     "PaymentPort",
     "SchedulerPort",
     "UnitOfWork",
     "WebsiteGatewayPort",
+    "WebsitePhoneRecipient",
 ]

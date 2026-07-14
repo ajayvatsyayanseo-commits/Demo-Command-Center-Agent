@@ -53,9 +53,7 @@ class DatabaseEventIngress:
                 duplicate = await session.scalar(
                     select(AgentInboxEvent.id).where(
                         or_(
-                            (
-                                AgentInboxEvent.source_agent == event.source_agent
-                            )
+                            (AgentInboxEvent.source_agent == event.source_agent)
                             & (AgentInboxEvent.event_id == event.event_id)
                             & (AgentInboxEvent.schema_version == event.schema_version),
                             (AgentInboxEvent.tenant_id == event.tenant_id)

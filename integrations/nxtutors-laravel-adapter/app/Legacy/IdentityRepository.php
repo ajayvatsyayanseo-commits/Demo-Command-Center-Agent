@@ -57,6 +57,40 @@ final class IdentityRepository
     }
 
     /** @return array<string, mixed>|null */
+    public function phoneRecipient(string $registerRef, string $purpose, string $demoRef): ?array
+    {
+        if (! $this->schema->exists('register') || ! in_array('phone', $this->schema->columns('register'), true)) {
+            throw new RuntimeException('Legacy register phone source is unavailable');
+        }
+        $row = DB::table($this->schema->table('register'))
+            ->select($this->schema->safeColumns('register', ['id', 'user_id', 'phone', 'status']))
+            ->where('id', $registerRef)
+            ->first();
+        if ($row === null || ! is_string($row->phone)) {
+            return null;
+        }
+        $normalized = self::normalizePhone($row->phone);
+        if ($normalized === null) {
+            return null;
+        }
+        $register = (string) $row->id;
+        $recipientRef = "register:{$register}:phone";
+        $projection = [
+            'register_ref' => $register,
+            'user_ref' => isset($row->user_id) ? (string) $row->user_id : null,
+            'recipient_ref' => $recipientRef,
+            'phone_reference' => $recipientRef,
+            'channel' => 'whatsapp',
+            'purpose' => $purpose,
+            'demo_ref' => $demoRef,
+            'masked_phone' => self::maskPhone($normalized),
+        ];
+        $projection['source_version'] = hash('sha256', json_encode($projection, JSON_THROW_ON_ERROR));
+
+        return $projection;
+    }
+
+    /** @return array<string, mixed>|null */
     public function internalRecord(string $reference): ?array
     {
         $byId = ctype_digit($reference) ? $this->resolve(['register_ref' => $reference]) : ['status' => 'not_found'];
@@ -97,5 +131,22 @@ final class IdentityRepository
         $projected['source_version'] = hash('sha256', json_encode($projected, JSON_THROW_ON_ERROR));
 
         return $projected;
+    }
+
+    private static function normalizePhone(string $phone): ?string
+    {
+        $normalized = preg_replace('/[^\d+]/', '', trim($phone));
+        if (! is_string($normalized) || preg_match('/^\+?[1-9][0-9]{7,14}$/', $normalized) !== 1) {
+            return null;
+        }
+
+        return $normalized;
+    }
+
+    private static function maskPhone(string $phone): string
+    {
+        $suffix = substr($phone, -4);
+
+        return str_repeat('*', max(0, strlen($phone) - 4)) . $suffix;
     }
 }

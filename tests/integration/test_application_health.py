@@ -15,7 +15,14 @@ def test_health_and_internal_auth_boundary() -> None:
     with TestClient(create_application(settings)) as client:
         assert client.get("/health/live").status_code == 200
         assert client.get("/health/ready").status_code == 200
-        assert client.get("/health/dependencies").status_code == 200
+        assert client.get("/health/dependencies").status_code == 401
+        assert (
+            client.get(
+                "/health/dependencies",
+                headers={"X-NXTutors-Internal-Secret": "test-internal-secret"},
+            ).status_code
+            == 200
+        )
         assert client.post("/v1/internal/events", json={}).status_code == 401
 
 

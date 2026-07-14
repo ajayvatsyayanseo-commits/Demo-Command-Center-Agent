@@ -53,6 +53,10 @@ class DemoCase(TimestampMixin, Base):
     flow_version: Mapped[str] = mapped_column(String(64), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class DemoStateTransition(Base):
@@ -112,6 +116,10 @@ class AgentInboxEvent(Base):
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     processing_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_code: Mapped[str | None] = mapped_column(String(100))
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class AgentOutboxEvent(Base):
@@ -137,8 +145,13 @@ class AgentOutboxEvent(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    provider_reference: Mapped[str | None] = mapped_column(String(255))
     attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error_code: Mapped[str | None] = mapped_column(String(100))
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class IdempotencyRecord(Base):
@@ -204,3 +217,7 @@ class AuditEvent(Base):
     previous_hash: Mapped[str | None] = mapped_column(String(64))
     event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     export_sanitized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    retain_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )

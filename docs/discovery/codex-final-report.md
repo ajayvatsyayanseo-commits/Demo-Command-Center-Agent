@@ -1,6 +1,54 @@
 # Codex architecture-phase final report
 
-Date: 2026-07-13 (Asia/Calcutta). Scope: read-only discovery of three existing systems followed by creation and local validation of the standalone `demo-command-center-agent` blueprint. This report does not claim production readiness or live-provider validation.
+Date: 2026-07-14 (Asia/Calcutta). Scope: historical discovery plus continued local implementation
+inside the standalone Demo Command Center Agent repository. This report does not claim production
+readiness or live-provider validation.
+
+## Implementation continuation addendum
+
+The remainder of this file is the historical architecture-phase snapshot, including its original
+tree, 27-test result, and then-outstanding implementation list. It must not be read as the final state
+of the continued implementation.
+
+The continued work added deterministic capability policies, expanded the PostgreSQL metadata to 46
+owned tables and a second Alembic revision, durable authenticated/encrypted ingress processing,
+server-side inbound HMAC key/source/scope grants, provider clients, a canonical paid-to-Onboarding
+request/accepted/completed slice with non-consuming pause controls, a substantially complete private
+Laravel adapter package, AWS Terraform and workflow definitions, production runbooks, and on
+2026-07-14 a safe Laravel `register.phone` recipient-resolution contract plus teacher-first Google
+Meet scheduling coordinator. The final continuation also added adapter-scoped NXTutor MySQL
+placeholder env names, configurable Laravel legacy table mappings, and an API-only Lambda HTTP
+handler for FastAPI.
+
+Final local evidence from 2026-07-14:
+
+- 184 Python tests passed with 83.24% coverage.
+- Strict mypy passed over 178 files.
+- Contracts valid: 10 schemas, 12 JSON files, 2 YAML files, 21 OpenAPI operations.
+- Workflows valid: 7 workflows, 3 composite actions, 50 job steps.
+- Production hygiene valid: 148 Python files inspected.
+- Migrations valid: 3 revisions, head `20260713_000003`.
+- Laravel adapter PHPUnit passed 20 tests and 95 assertions.
+- Terraform fmt plus dev/staging/prod local init/validate passed.
+- `production_check.py --allow-skips` reported 15 passed, 0 failed, 9 skipped, overall PARTIAL.
+- Strict `production_check.py` reported the same 15/0/9 summary and exited nonzero as INCOMPLETE.
+
+Current evidence and disposition are maintained in:
+
+- [`codex-database-config-correction-report.md`](codex-database-config-correction-report.md) for the
+  Laravel/MySQL `register` ownership and safe gateway projection;
+- [`../operations/requirement-traceability-matrix.md`](../operations/requirement-traceability-matrix.md)
+  for loops 0-23 and gates A-J;
+- [`../operations/production-readiness-report.md`](../operations/production-readiness-report.md) for
+  the no-go/closure decision;
+- [`../operations/codex-final-implementation-report.md`](../operations/codex-final-implementation-report.md)
+  for the implementation handoff.
+
+Production remains unapproved at this evidence point. Docker/PostgreSQL and live credentials were
+unavailable; no provider/AWS live validation occurred; the inspected Lead Intake service does not
+implement the internal outbound WhatsApp endpoint targeted by this client; Onboarding remains on a
+legacy compatibility contract; and the Laravel adapter is not installed in the website deployment.
+The original no-commit/no-push instruction remains binding.
 
 ## Repositories inspected
 

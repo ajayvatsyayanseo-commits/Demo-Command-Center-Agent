@@ -259,6 +259,10 @@ class CalendarEventState(TimestampMixin, Base):
     conference_status: Mapped[str] = mapped_column(String(32), nullable=False)
     meeting_uri_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary)
     meeting_uri_key_reference: Mapped[str | None] = mapped_column(String(255))
+    meeting_uri_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    legal_hold: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     last_reconciled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 

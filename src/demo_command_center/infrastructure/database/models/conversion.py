@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -45,7 +46,9 @@ class DiscountDecision(TimestampMixin, Base):
     __tablename__ = "discount_decisions"
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key"),
-        CheckConstraint("selected_price_minor >= minimum_price_minor", name="discount_above_minimum"),
+        CheckConstraint(
+            "selected_price_minor >= minimum_price_minor", name="discount_above_minimum"
+        ),
         CheckConstraint("selected_price_minor <= list_price_minor", name="discount_below_list"),
         Index(
             "ix_discount_active_binding",
@@ -87,9 +90,13 @@ class DiscountDecision(TimestampMixin, Base):
 class PaymentOrder(TimestampMixin, Base):
     __tablename__ = "payment_orders"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "domain_order_id"),
+        UniqueConstraint("tenant_id", "domain_order_id", name="uq_payment_order_domain_id"),
         UniqueConstraint("provider", "provider_order_id"),
-        UniqueConstraint("tenant_id", "creation_idempotency_key"),
+        UniqueConstraint(
+            "tenant_id",
+            "creation_idempotency_key",
+            name="uq_payment_order_creation_idempotency",
+        ),
         CheckConstraint("amount_minor > 0", name="payment_order_positive_amount"),
         Index("ix_payment_orders_reconcile", "status", "reconcile_after"),
     )
@@ -103,7 +110,9 @@ class PaymentOrder(TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     provider_order_id: Mapped[str | None] = mapped_column(String(255))
     user_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    customer_ref: Mapped[str] = mapped_column(String(255), nullable=False)
     plan_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    plan_version: Mapped[str] = mapped_column(String(64), nullable=False)
     offer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("discount_decisions.id"))
     amount_minor: Mapped[int] = mapped_column(Integer, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
@@ -116,6 +125,21 @@ class PaymentOrder(TimestampMixin, Base):
     reconcile_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+
+class PaymentCheckoutSession(TimestampMixin, Base):
+    """Encrypted, short-lived Cashfree hosted-checkout material for an internal caller."""
+
+    __tablename__ = "payment_checkout_sessions"
+    __table_args__ = (UniqueConstraint("payment_order_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    payment_order_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("payment_orders.id", ondelete="CASCADE"), nullable=False
+    )
+    session_ciphertext: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    key_reference: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class PaymentLink(TimestampMixin, Base):
@@ -260,7 +284,12 @@ class RegionalAlert(TimestampMixin, Base):
     __tablename__ = "regional_alerts"
     __table_args__ = (
         UniqueConstraint("tenant_id", "deduplication_key"),
-        Index("ix_regional_alerts_open", "tenant_id", "region_id", postgresql_where=text("status = 'open'")),
+        Index(
+            "ix_regional_alerts_open",
+            "tenant_id",
+            "region_id",
+            postgresql_where=text("status = 'open'"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

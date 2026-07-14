@@ -9,6 +9,7 @@ use NxTutors\DemoCommandCenterAdapter\Http\Controllers\IdentityController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\MinimumProfileController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\OnboardingStatusController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\PlanQuoteController;
+use NxTutors\DemoCommandCenterAdapter\Http\Controllers\ProfilePhoneController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\ReferenceCatalogController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\RegionMappingsController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\SocialProofController;
@@ -16,6 +17,7 @@ use NxTutors\DemoCommandCenterAdapter\Http\Controllers\SubscriptionActivationCon
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\SubscriptionStateController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\TutorCandidatesController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\TutorContactController;
+use NxTutors\DemoCommandCenterAdapter\Http\Controllers\TutorPhoneController;
 use NxTutors\DemoCommandCenterAdapter\Http\Controllers\TutorProfileController;
 
 Route::prefix('internal/api/v1/demo-command-center')
@@ -31,6 +33,9 @@ Route::prefix('internal/api/v1/demo-command-center')
         Route::get('/profiles/{register}/minimum', MinimumProfileController::class)
             ->middleware('demo-command-center.scope:demo:profiles:read')
             ->name('dcc.profiles.minimum');
+        Route::post('/profiles/{register}/phone-resolve', ProfilePhoneController::class)
+            ->middleware('demo-command-center.scope:demo:profile-phone:read')
+            ->name('dcc.profiles.phone');
 
         Route::get('/tutors/candidates', TutorCandidatesController::class)
             ->middleware('demo-command-center.scope:demo:tutors:read')
@@ -41,6 +46,9 @@ Route::prefix('internal/api/v1/demo-command-center')
         Route::post('/tutors/{tutor}/contact-resolve', TutorContactController::class)
             ->middleware('demo-command-center.scope:demo:tutor-contact:read')
             ->name('dcc.tutors.contact');
+        Route::post('/tutors/{tutor}/phone-resolve', TutorPhoneController::class)
+            ->middleware('demo-command-center.scope:demo:tutor-phone:read')
+            ->name('dcc.tutors.phone');
 
         Route::get('/reference/catalog', ReferenceCatalogController::class)
             ->middleware('demo-command-center.scope:demo:reference:read')

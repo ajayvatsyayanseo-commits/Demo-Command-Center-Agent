@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.nxtutors.internal/demo-command-center/events/onboarding-completed.v1.schema.json",
+  "title": "onboarding.completed.v1 payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["demo_ref", "user_ref", "onboarding_ref", "completion_status"],
+  "properties": {
+    "demo_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "user_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "onboarding_ref": {"type": "string", "minLength": 1, "maxLength": 255},
+    "completion_status": {"const": "completed"}
+  }
+}

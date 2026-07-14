@@ -6,7 +6,7 @@ import hmac
 import time
 from collections.abc import Mapping, Set
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 
 class ReplayStore(Protocol):
@@ -32,11 +32,11 @@ class InMemoryReplayStore:
 
 
 class RedisReplayStore:
-    def __init__(self, redis_client: object) -> None:
-        self._redis = redis_client
+    def __init__(self, redis_client: Any) -> None:
+        self._redis: Any = redis_client
 
     async def consume(self, key: str, ttl_seconds: int) -> bool:
-        set_method = getattr(self._redis, "set")
+        set_method = self._redis.set
         result = await set_method(key, b"1", ex=ttl_seconds, nx=True)
         return bool(result)
 
@@ -48,6 +48,15 @@ class InternalIdentity:
     scopes: frozenset[str]
     key_id: str
     legacy: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class HmacKeyGrant:
+    """Server-side authorization bound to one inbound verification key."""
+
+    secret: str
+    source: str
+    scopes: frozenset[str]
 
 
 class InternalAuthenticationError(ValueError):
@@ -87,13 +96,17 @@ class HmacRequestVerifier:
     def __init__(
         self,
         *,
-        keys: Mapping[str, str],
+        key_grants: Mapping[str, HmacKeyGrant],
         issuer: str,
         audience: str,
         replay_window_seconds: int,
         replay_store: ReplayStore,
     ) -> None:
-        self._keys = {key_id: value for key_id, value in keys.items() if key_id and value}
+        self._key_grants = {
+            key_id: grant
+            for key_id, grant in key_grants.items()
+            if key_id and grant.secret and grant.source and grant.scopes
+        }
         self._issuer = issuer
         self._audience = audience
         self._replay_window = replay_window_seconds
@@ -101,7 +114,7 @@ class HmacRequestVerifier:
 
     @property
     def configured(self) -> bool:
-        return bool(self._keys) and self._replay_window > 0
+        return bool(self._key_grants) and self._replay_window > 0
 
     async def verify(
         self,
@@ -134,9 +147,11 @@ class HmacRequestVerifier:
         current_time = int(time.time()) if now is None else now
         if abs(current_time - signed_at) > self._replay_window:
             raise InternalAuthenticationError("request timestamp is outside the replay window")
-        secret = self._keys.get(key_id)
-        if secret is None:
+        grant = self._key_grants.get(key_id)
+        if grant is None:
             raise InternalAuthenticationError("unknown signing key")
+        if source != grant.source:
+            raise InternalAuthenticationError("signing key is not authorized for this source")
         canonical = canonical_request(
             method=method,
             path=path,
@@ -147,11 +162,13 @@ class HmacRequestVerifier:
             scopes=scopes_value,
             body=body,
         )
-        expected = sign_internal_request(secret, canonical)
+        expected = sign_internal_request(grant.secret, canonical)
         if not hmac.compare_digest(expected.encode("ascii"), signature.encode("ascii")):
             raise InternalAuthenticationError("invalid signature")
         scopes = frozenset(scopes_value.split(" "))
-        if not required_scopes.issubset(scopes):
+        if not scopes.issubset(grant.scopes):
+            raise InternalAuthenticationError("signed scopes exceed the key grant")
+        if any(scope not in scopes for scope in required_scopes):
             raise InternalAuthenticationError("insufficient scope")
         replay_key = f"dcc:auth-replay:{key_id}:{source}:{nonce}"
         if not await self._replay_store.consume(replay_key, self._replay_window):

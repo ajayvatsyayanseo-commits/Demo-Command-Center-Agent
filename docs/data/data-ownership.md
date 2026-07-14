@@ -13,3 +13,11 @@
 | Analytics artifacts | Sanitized S3/Glue/Athena | Allowlisted export only |
 
 No Python code writes arbitrary Laravel tables. The gateway validates authenticated service scope, tenant/region, request schema, optimistic source version, and idempotency key. Laravel mutations and its outbox commit together. Cross-system operations are sagas; there is no cross-database transaction assumption.
+
+The Demo service does not use MySQL `DB_*` credentials at runtime. The repository may contain
+adapter-scoped placeholder names for the Laravel website deployment (`DB_*` inside the adapter
+package or `NXTUTORS_WEBSITE_DB_*` in example configuration), but production values stay in the
+Laravel/AWS secret boundary. The Laravel adapter reads `register` inside the website deployment and
+exposes only safe projections: profile/tutor summaries, plan quotes, activation commands, and
+purpose-bound contact references. Scheduling uses `register.phone` through `phone-resolve`
+endpoints that return opaque WhatsApp recipient references, not raw phone numbers.

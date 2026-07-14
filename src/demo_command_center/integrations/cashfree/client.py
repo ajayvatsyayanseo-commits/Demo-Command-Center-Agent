@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 from urllib.parse import quote
 
@@ -34,6 +34,7 @@ class CashfreePaymentGateway:
             raise ValueError("Cashfree environment must be sandbox or production")
         if not app_id or not secret_key or not api_version:
             raise ValueError("Cashfree server credentials and API version are required")
+        self._environment = environment
         self._base_url = (
             "https://sandbox.cashfree.com/pg/"
             if environment == "sandbox"
@@ -60,8 +61,12 @@ class CashfreePaymentGateway:
         request: PaymentOrderRequest,
         idempotency_key: IdempotencyKey,
     ) -> ProviderOrderResult:
-        if request.amount_minor <= 0 or len(request.currency) != 3:
-            raise ServiceError(ErrorCode.POLICY_REJECTED, "Payment amount or currency is invalid")
+        if (
+            request.amount_minor <= 0
+            or len(request.currency) != 3
+            or request.expires_at.tzinfo is None
+        ):
+            raise ServiceError(ErrorCode.POLICY_REJECTED, "Payment order input is invalid")
         body: dict[str, Any] = {
             "order_id": request.order_reference,
             "order_amount": str(Decimal(request.amount_minor) / Decimal(100)),
@@ -71,9 +76,11 @@ class CashfreePaymentGateway:
                 "customer_phone": request.customer_phone,
             },
             "order_note": request.purpose,
+            "order_expiry_time": request.expires_at.isoformat(),
             "order_tags": {
                 "purpose": request.purpose,
                 "correlation_id": request.correlation_id,
+                "environment": self._environment,
             },
         }
         if request.return_url:
@@ -85,10 +92,16 @@ class CashfreePaymentGateway:
             "x-request-id": request.correlation_id,
         }
         payload = await self._request("POST", "/orders", headers=headers, content=raw)
-        provider_order_id = payload.get("cf_order_id")
+        provider_order_id = _provider_reference(payload.get("cf_order_id"))
         session_id = payload.get("payment_session_id")
         order_status = payload.get("order_status")
-        if not all(isinstance(item, str) and item for item in (provider_order_id, session_id, order_status)):
+        if (
+            provider_order_id is None
+            or not isinstance(session_id, str)
+            or not session_id
+            or not isinstance(order_status, str)
+            or not order_status
+        ):
             raise ServiceError(
                 ErrorCode.PROVIDER_RESPONSE_INVALID,
                 "Cashfree returned an invalid order acknowledgement",
@@ -99,14 +112,14 @@ class CashfreePaymentGateway:
             status=order_status,
         )
 
-    async def fetch_verified_status(self, provider_order_id: str) -> ProviderPaymentStatus:
-        safe_order_id = quote(provider_order_id, safe="")
+    async def fetch_verified_status(self, order_reference: str) -> ProviderPaymentStatus:
+        safe_order_id = quote(order_reference, safe="")
         payload = await self._request(
             "GET",
             f"/orders/{safe_order_id}",
             headers=self._headers,
         )
-        order_id = payload.get("cf_order_id")
+        order_id = _provider_reference(payload.get("cf_order_id"))
         order_status = payload.get("order_status")
         currency = payload.get("order_currency")
         try:
@@ -115,10 +128,10 @@ class CashfreePaymentGateway:
                     Decimal("1"), rounding=ROUND_HALF_UP
                 )
             )
-        except (ValueError, TypeError):
+        except (InvalidOperation, ValueError, TypeError):
             amount_minor = -1
         if (
-            not isinstance(order_id, str)
+            order_id is None
             or not isinstance(order_status, str)
             or not isinstance(currency, str)
             or amount_minor < 0
@@ -162,3 +175,10 @@ class CashfreePaymentGateway:
                 "Cashfree returned an invalid response",
             )
         return payload
+
+
+def _provider_reference(value: object) -> str | None:
+    if isinstance(value, bool) or not isinstance(value, str | int):
+        return None
+    reference = str(value).strip()
+    return reference or None

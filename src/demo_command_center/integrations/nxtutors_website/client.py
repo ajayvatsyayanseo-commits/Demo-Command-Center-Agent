@@ -17,6 +17,7 @@ from demo_command_center.modules.demo_core.domain.identifiers import Idempotency
 from demo_command_center.modules.demo_core.ports.gateways import (
     TutorSearchQuery,
     VerifiedSubscriptionActivation,
+    WebsitePhoneRecipient,
 )
 
 
@@ -86,9 +87,7 @@ class NxtutorsWebsiteGateway:
             )
         return payload
 
-    async def search_tutor_candidates(
-        self, query: TutorSearchQuery
-    ) -> Sequence[Mapping[str, Any]]:
+    async def search_tutor_candidates(self, query: TutorSearchQuery) -> Sequence[Mapping[str, Any]]:
         parameters: dict[str, str | int] = {
             "page": query.page,
             "per_page": query.per_page,
@@ -104,17 +103,16 @@ class NxtutorsWebsiteGateway:
             "class_type": query.class_type,
         }
         parameters.update({key: value for key, value in optional.items() if value is not None})
-        target = (
-            "/internal/api/v1/demo-command-center/tutors/candidates?"
-            + urlencode(parameters)
-        )
+        target = "/internal/api/v1/demo-command-center/tutors/candidates?" + urlencode(parameters)
         payload = await self._request(
             "GET",
             target,
-            scopes=("tutors:read",),
+            scopes=("demo:tutors:read",),
         )
         candidates = payload.get("data", [])
-        if not isinstance(candidates, list) or not all(isinstance(item, dict) for item in candidates):
+        if not isinstance(candidates, list) or not all(
+            isinstance(item, dict) for item in candidates
+        ):
             raise ServiceError(
                 ErrorCode.PROVIDER_RESPONSE_INVALID,
                 "Tutor search returned an invalid projection",
@@ -130,7 +128,7 @@ class NxtutorsWebsiteGateway:
                 f"/internal/api/v1/demo-command-center/plans/{safe_plan}/quote"
                 f"?user_ref={safe_customer}"
             ),
-            scopes=("plans:read",),
+            scopes=("demo:plans:read",),
         )
         quote_payload = payload.get("data")
         if not isinstance(quote_payload, dict):
@@ -140,6 +138,69 @@ class NxtutorsWebsiteGateway:
             )
         return quote_payload
 
+    async def resolve_tutor_phone_recipient(
+        self, tutor_ref: str, *, demo_ref: str, purpose: str
+    ) -> WebsitePhoneRecipient:
+        safe_tutor = quote(tutor_ref, safe="")
+        return await self._resolve_phone_recipient(
+            f"/internal/api/v1/demo-command-center/tutors/{safe_tutor}/phone-resolve",
+            scopes=("demo:tutor-phone:read",),
+            body={"demo_ref": demo_ref, "purpose": purpose},
+        )
+
+    async def resolve_profile_phone_recipient(
+        self, register_ref: str, *, demo_ref: str, purpose: str
+    ) -> WebsitePhoneRecipient:
+        safe_register = quote(register_ref, safe="")
+        return await self._resolve_phone_recipient(
+            f"/internal/api/v1/demo-command-center/profiles/{safe_register}/phone-resolve",
+            scopes=("demo:profile-phone:read",),
+            body={"demo_ref": demo_ref, "purpose": purpose},
+        )
+
+    async def _resolve_phone_recipient(
+        self,
+        path: str,
+        *,
+        scopes: tuple[str, ...],
+        body: Mapping[str, Any],
+    ) -> WebsitePhoneRecipient:
+        payload = await self._request("POST", path, scopes=scopes, body=body)
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ServiceError(
+                ErrorCode.PROVIDER_RESPONSE_INVALID,
+                "Phone recipient resolution returned an invalid projection",
+            )
+        required = {
+            "recipient_ref",
+            "phone_reference",
+            "masked_phone",
+            "channel",
+            "purpose",
+            "demo_ref",
+            "source_version",
+        }
+        if not all(isinstance(data.get(field), str) for field in required):
+            raise ServiceError(
+                ErrorCode.PROVIDER_RESPONSE_INVALID,
+                "Phone recipient resolution is missing required fields",
+            )
+        return WebsitePhoneRecipient(
+            register_ref=data.get("register_ref")
+            if isinstance(data.get("register_ref"), str)
+            else None,
+            tutor_ref=data.get("tutor_ref") if isinstance(data.get("tutor_ref"), str) else None,
+            user_ref=data.get("user_ref") if isinstance(data.get("user_ref"), str) else None,
+            recipient_ref=str(data["recipient_ref"]),
+            phone_reference=str(data["phone_reference"]),
+            masked_phone=str(data["masked_phone"]),
+            channel=str(data["channel"]),
+            purpose=str(data["purpose"]),
+            demo_ref=str(data["demo_ref"]),
+            source_version=str(data["source_version"]),
+        )
+
     async def activate_verified_subscription(
         self,
         activation: VerifiedSubscriptionActivation,
@@ -148,7 +209,7 @@ class NxtutorsWebsiteGateway:
         payload = await self._request(
             "POST",
             "/internal/api/v1/demo-command-center/subscriptions/activations",
-            scopes=("subscriptions:activate",),
+            scopes=("demo:subscription:write",),
             body={
                 "demo_ref": activation.demo_ref,
                 "website_user_ref": activation.website_user_ref,

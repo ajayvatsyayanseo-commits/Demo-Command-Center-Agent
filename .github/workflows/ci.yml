@@ -25,11 +25,9 @@ jobs:
         run: |
           uv run python scripts/validate_contracts.py
           uv run python scripts/validate_workflows.py
+          uv run python scripts/validate_production_hygiene.py
       - name: Migration structure validation
-        run: |
-          uv run alembic history
-          uv run alembic heads
-          test "$(uv run alembic heads | wc -l)" -eq 1
+        run: uv run python scripts/validate_migrations.py
       - uses: actions/upload-artifact@v4
         with:
           name: coverage

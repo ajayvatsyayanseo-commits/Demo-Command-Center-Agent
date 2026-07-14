@@ -5,15 +5,6 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
-from tests.unit.test_conversion_discount_and_payment_policies import (
-    NOW,
-    _discount_context,
-    _discount_policy,
-    _evidence,
-    _order,
-    _payment_policy,
-)
-from tests.unit.test_matching_and_scheduling_policies import _scheduling_policy
 
 from demo_command_center.modules.communications.domain.message_policy import (
     Channel,
@@ -75,6 +66,15 @@ from demo_command_center.modules.tutor_matching.domain.matching import (
     RankingSignal,
     TutorCandidate,
 )
+from tests.unit.test_conversion_discount_and_payment_policies import (
+    NOW,
+    _discount_context,
+    _discount_policy,
+    _evidence,
+    _order,
+    _payment_policy,
+)
+from tests.unit.test_matching_and_scheduling_policies import _scheduling_policy
 
 
 @pytest.mark.parametrize(
