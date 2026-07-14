@@ -1,4 +1,10 @@
+# Environment files, including examples/checklists, must stay out of Git.
 .env
+.env.example
+.env.example*
+.env.*
+**/.env
+**/.env.*
 .venv/
 __pycache__/
 *.py[cod]
