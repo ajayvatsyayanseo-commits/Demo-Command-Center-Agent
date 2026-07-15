@@ -326,21 +326,16 @@ class Settings(BaseSettings):
                 errors.append("OpenAI capability requires API key and model")
             if self.openai_daily_budget is None or self.openai_monthly_budget is None:
                 errors.append("OpenAI capability requires daily and monthly budgets")
-        if self.meta_direct_webhook_enabled and not all(
-            [
-                self.meta_whatsapp_app_secret.get_secret_value(),
-                self.meta_whatsapp_verify_token.get_secret_value(),
-            ]
-        ):
-            errors.append("direct Meta webhook requires app secret and verify token")
+        if self.meta_direct_webhook_enabled:
+            errors.append(
+                "direct Meta webhook is prohibited; Lead Intake must remain the canonical "
+                "public Meta ingress"
+            )
         if self.meta_outbound_enabled and not self.meta_outbound_paused:
-            if not all(
-                [
-                    self.meta_whatsapp_access_token.get_secret_value(),
-                    self.meta_whatsapp_phone_number_id,
-                ]
-            ):
-                errors.append("Meta outbound requires access token and phone number ID")
+            errors.append(
+                "Meta outbound requires the canonical Lead Intake gateway and must remain "
+                "paused in Demo Command Center"
+            )
         if not self.demo_outbound_paused:
             if self.lead_intake_auth_mode != "canonical-hmac" or not all(
                 [

@@ -7,7 +7,52 @@ permissions:
   contents: read
   id-token: write
 jobs:
+  preflight:
+    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - name: Validate deployment configuration names
+        shell: bash
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+          ECS_WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
+          ECS_API_TASK_FAMILY: ${{ vars.ECS_API_TASK_FAMILY }}
+          ECS_WORKER_TASK_FAMILY: ${{ vars.ECS_WORKER_TASK_FAMILY }}
+          ECS_MIGRATION_NETWORK_CONFIGURATION: ${{ vars.ECS_MIGRATION_NETWORK_CONFIGURATION }}
+          SMOKE_BASE_URL: ${{ vars.SMOKE_BASE_URL }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            AWS_ROLE_ARN \
+            AWS_REGION \
+            ECR_REPOSITORY \
+            ECS_CLUSTER \
+            ECS_API_SERVICE \
+            ECS_WORKER_SERVICE \
+            ECS_API_TASK_FAMILY \
+            ECS_WORKER_TASK_FAMILY \
+            ECS_MIGRATION_NETWORK_CONFIGURATION \
+            SMOKE_BASE_URL
+          do
+            if [ -z "${!name:-}" ]; then
+              missing+=("$name")
+            fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            printf 'Missing required dev deployment configuration names:\n' >&2
+            printf ' - %s\n' "${missing[@]}" >&2
+            exit 1
+          fi
+          echo "Dev deployment preflight passed without printing secret values."
   build-and-deploy:
+    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+    needs: preflight
     runs-on: ubuntu-latest
     environment: dev
     concurrency: {group: demo-command-center-dev, cancel-in-progress: false}

@@ -3,6 +3,39 @@
 Date: 2026-07-14 (Asia/Calcutta)  
 Decision: **NO-GO for production at this evidence point**
 
+## 2026-07-15 continuation evidence
+
+Disposition remains **NO-GO for production**, but two code-controlled safety blockers and one Dev
+deployment workflow blocker were closed:
+
+- Demo Command Center now always rejects `META_DIRECT_WEBHOOK_ENABLED=true`, preserving Lead Intake
+  as the canonical public Meta ingress.
+- Demo Command Center now rejects active direct Meta outbound mode when unpaused; outbound delivery
+  must go through the canonical Lead Intake gateway.
+- `.github/workflows/deploy-dev.yml` now skips push-to-main deployment unless
+  `DEPLOY_DEV_ENABLED=true`; manual dispatch and enabled push deployments run a preflight job that
+  validates required config names without printing secret values.
+
+Validation evidence from this pass:
+
+- `make check` could not start because `make` is not installed on this Windows shell.
+- Equivalent local gate via `.venv\Scripts\python.exe` passed: Ruff format/check, MyPy, contracts,
+  workflow validation, production hygiene, migrations and pytest.
+- Full pytest after the Meta safety fix: **184 passed, 2 warnings, 82.90% coverage**.
+- Focused settings/security tests after the fix: **26 passed, 1 warning**.
+- `scripts/production_check.py`: **15 passed, 0 failed, 9 skipped**, strict exit `2`, overall
+  **INCOMPLETE**.
+- `scripts/production_check.py --allow-skips`: **15 passed, 0 failed, 9 skipped**, exit `0`, overall
+  **PARTIAL**.
+- Laravel adapter tests inside the production gate: **20 tests, 95 assertions**.
+- Workflow validation after the Dev preflight edit: **7 workflows, 3 composite actions, 51 job
+  steps**.
+
+Skipped production evidence remains release-blocking: Docker build/runtime/scan/SBOM, Gitleaks,
+tflint, Checkov/tfsec, PostgreSQL live round-trip, load smoke, deployed smoke, AWS deployment,
+provider sandbox calls, and rollback drill. The detailed traceability for this continuation is in
+[`production-closure-traceability.md`](production-closure-traceability.md).
+
 ## 2026-07-14 gate evidence
 
 The final local gate run is stronger than the historical evidence below, but it still does not

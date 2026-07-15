@@ -8,8 +8,9 @@ import time
 from copy import deepcopy
 from uuid import uuid4
 
+import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 
 from demo_command_center.bootstrap.application_factory import create_application
 from demo_command_center.config.settings import Settings
@@ -246,45 +247,12 @@ def test_cashfree_webhook_is_verified_and_deduplicated() -> None:
         )
 
 
-def test_direct_meta_mode_requires_verification_and_persists_fast_ack() -> None:
-    secret = "meta-secret"
-    settings = _settings(
-        meta_direct_webhook_enabled=True,
-        meta_whatsapp_app_secret=SecretStr(secret),
-        meta_whatsapp_verify_token=SecretStr("verify-token"),
-    )
-    raw = b'{"object":"whatsapp_business_account","entry":[]}'
-    signature = "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
-    with TestClient(create_application(settings)) as client:
-        verify = client.get(
-            "/v1/provider/meta/whatsapp",
-            params={
-                "hub.mode": "subscribe",
-                "hub.verify_token": "verify-token",
-                "hub.challenge": "challenge",
-            },
-        )
-        assert verify.status_code == 200 and verify.text == "challenge"
-        assert (
-            client.get(
-                "/v1/provider/meta/whatsapp",
-                params={"hub.mode": "subscribe", "hub.verify_token": "wrong"},
-            ).status_code
-            == 403
-        )
-        accepted = client.post(
-            "/v1/provider/meta/whatsapp",
-            content=raw,
-            headers={"X-Hub-Signature-256": signature},
-        )
-        assert accepted.status_code == 202
-        assert (
-            client.post(
-                "/v1/provider/meta/whatsapp",
-                content=raw,
-                headers={"X-Hub-Signature-256": "sha256=bad"},
-            ).status_code
-            == 403
+def test_direct_meta_mode_is_rejected_to_preserve_lead_intake_ownership() -> None:
+    with pytest.raises(ValidationError, match="direct Meta webhook"):
+        _settings(
+            meta_direct_webhook_enabled=True,
+            meta_whatsapp_app_secret=SecretStr("meta-secret"),
+            meta_whatsapp_verify_token=SecretStr("verify-token"),
         )
 
 
