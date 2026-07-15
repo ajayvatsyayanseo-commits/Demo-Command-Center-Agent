@@ -1,4 +1,4 @@
-# Demo Command Center Agent
+# --------Demo Command Center Agent------
 
 Production-oriented architecture and compileable scaffold for the NXTutors demo journey: qualification, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff.
 
@@ -22,3 +22,4 @@ uv run pytest
 Start with [the architecture index](docs/architecture/README.md), [the discovery inventory](docs/discovery/current-system-inventory.md), and [the final phase report](docs/discovery/codex-final-report.md).
 
 This phase is an architectural scaffold, not a claim of validated live provider integrations. Provider sandbox/live status is reported explicitly by the doctor command.
+
