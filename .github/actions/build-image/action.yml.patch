@@ -1,0 +1,55 @@
+--- a/.github/actions/build-image/action.yml
++++ b/.github/actions/build-image/action.yml
+@@ -10,6 +10,10 @@ outputs:
+   image-uri:
+     value: ${{ steps.digest.outputs.image-uri }}
+     description: Immutable image URI by digest
++  # Optional cache output for debugging
++  cache-info:
++    description: Info about cache usage (if enabled)
++    value: ${{ steps.build.outputs.cache}}
+ runs:
+   using: composite
+   steps:
+@@ -17,8 +21,18 @@ runs:
+     - uses: docker/setup-buildx-action@v3
+     - uses: docker/build-push-action@v6
+       id: build
+-      with:
+-        context: .
+-        push: true
+-        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}
+-        provenance: true
+-        sbom: true
++      with:
++        context: .
++        push: true
++        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}
++        provenance: true
++        sbom: true
++        # Cache options
++        cache-from: ${{ inputs.cache-from != '' && inputs.cache-from || 'type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache' }}
++        cache-to: ${{ inputs.cache-to != '' && inputs.cache-to || 'type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache,mode=max' }}
++        # If cache inputs are not provided, we still want to use cache but with a default
++        # However, to avoid breaking changes, we make the cache inputs optional and only add them if provided.
++        # But note: the build-push-action requires the cache options to be set to use cache.
++        # So, we will conditionally add the cache options only if the inputs are provided.
++        # However, to keep it simple and always use cache, we set default values.
++        # We'll override the defaults if the user provides empty strings to disable caching.
+        # For now, we always enable caching to the registry with a buildcache tag.
+        # To disable caching, set cache-from and cache-to to empty strings and handle accordingly.
+        # But to keep the change simple and backward compatible, we will always use cache.
+        # We can add two new inputs to control caching.
+   - id: digest
+     shell: bash
+     env:
+@@ -30,6 +41,12 @@ runs:
+         IMAGE: ${{ inputs.registry }}/${{ inputs.repository }}
+         DIGEST: ${{ steps.build.outputs.digest }}
+       run: |
+         echo "image-uri=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+         echo "$IMAGE@$DIGEST" > image-digest.txt
++        # Output cache info if available
++        echo "cache-info=${{ steps.build.outputs.cache}}"
++
++

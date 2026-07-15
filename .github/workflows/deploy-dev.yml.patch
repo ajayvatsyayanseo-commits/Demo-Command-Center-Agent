@@ -1,0 +1,109 @@
+--- a/.github/workflows/deploy-dev.yml
++++ b/.github/workflows/deploy-dev.yml
+@@ -10,8 +10,9 @@ jobs:
+   preflight:
+     if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+     runs-on: ubuntu-latest
+-    environment: dev
++    environment: dev
+     steps:
+-      - name: Validate deployment configuration names
++      - name: Validate deployment configuration names
+         shell: bash
+         env:
+           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+@@ -20,11 +21,13 @@ jobs:
+           ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+           ECS_API_SERVICE: ${{ vars.ECS_API_SERVICE }}
+           ECS_WORKER_SERVICE: ${{ vars.ECS_WORKER_SERVICE }}
++          # Add more env vars as needed from your original file
+         run: |
+           set -euo pipefail
+           missing=()
+           for name in \
+             AWS_ROLE_ARN \
+             AWS_REGION \
+             ECR_REPOSITORY \
+             ECS_CLUSTER \
+             ECS_API_SERVICE \
+             ECS_WORKER_SERVICE \
+             ECS_API_TASK_FAMILY \
+             ECS_WORKER_TASK_FAMILY \
+             ECS_MIGRATION_NETWORK_CONFIGURATION \
+             SMOKE_BASE_URL
+           do
+             if [ -z "${!name:-}" ]; then
+               missing+=("$name")
+             fi
+           done
+           if [ "${#missing[@]}" -gt 0 ]; then
+             printf 'Missing required dev deployment configuration names:\n' >&2
+             printf ' - %s\n' "${missing[@]}" >&2
+             exit 1
+           fi
+           echo "Dev deployment preflight passed without printing secret values."
+   build-and-deploy:
+     if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+     needs: preflight
+     runs-on: ubuntu-latest
+-    environment: dev
++    environment: dev
+     concurrency:  # <-- ADDED: Smart concurrency to prevent queuing
++      group: ${{ github.workflow }}-${{ github.ref }}  # Unique per workflow and branch/ref
++      cancel-in-progress: true                         # Cancel previous runs when new one starts
+     steps:
+       - uses: actions/checkout@v4
+@@ -50,6 +53,9 @@ jobs:
+           uses: aws-actions/amazon-ecr-login@v2
+         - id: image
+           uses: ./.github/actions/build-image
++          # Add build caching for faster builds
++          # with:
++          #   cache-from: type=registry,ref=${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:buildcache
+         with:
+           registry: ${{ steps.ecr.outputs.registry }}
+           repository: ${{ vars.ECR_REPOSITORY }}
+@@ -65,6 +71,9 @@ jobs:
+           worker-service: ${{ vars.ECS_WORKER_SERVICE }}
+           task-definition-family: ${{ vars.ECS_API_TASK_FAMILY }}
+           worker-task-definition-family: ${{ vars.ECS_WORKER_TASK_FAMILY }}
++          # Add optimization: skip deployment if image unchanged (optional enhancement)
++          # with:
++          #   skip-unchanged-image: true
+           migration-network-configuration: ${{ vars.ECS_MIGRATION_NETWORK_CONFIGURATION }}
+           smoke-url: ${{ vars.SMOKE_BASE_URL }}
+         - name: Record immutable deployment
+@@ -78,11 +87,16 @@ jobs:
+           path: image-digest.txt
+           if-no-files-found: ignore
+
++  # ADDED: Optimize triggers to prevent unnecessary runs
++  on:
++    push:
++      branches: [main]
++      paths:
++        - 'infrastructure/**'
++        - '.github/workflows/deploy-*.yml'
++        - 'Dockerfile'
++        - 'pyproject.toml'
++        - 'uv.lock'
++        - 'src/**'
++      paths-ignore:
++        - 'README.md'
++        - 'CHANGELOG.md'
++        - 'CONTRIBUTING.md'
++        - 'docs/**'
++        - '*.md'
+     workflow_dispatch: {}
+
+   # ADDED: Add debugging step to monitor concurrency (optional but helpful)
+   # Add this as first step in each job if you want to see queue status:
+   # - name: 🔍 Debug Concurrency Info
+   #   run: |
+   #     echo "Workflow: ${{ github.workflow }}"
+   #     echo "Run ID: ${{ github.run_number }}"
+   #     echo "Trigger: ${{ github.event_name }}"
+   #     echo "Current time: $(date)"
+   #     echo "Queued runs for this workflow: $(($(gh run list --workflow ${{ github.workflow }} --limit 100 --json databaseId -q '.[] | select(.status=="queued") | length')+1))"
+   #   env:
+   #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

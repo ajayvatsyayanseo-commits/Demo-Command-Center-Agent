@@ -1,0 +1,772 @@
+# Kubernetes Deployment Manifests for Demo Command Center Agent
+# This file contains all necessary Kubernetes resources to deploy the application
+# to a Kubernetes cluster (e.g., EKS, GKE, AKS, or on-premises K8s).
+#
+# To deploy: kubectl apply -f k8s-deployment.yaml
+# To delete: kubectl delete -f k8s-deployment.yaml
+#
+# NOTE: This assumes you have:
+# 1. A running Kubernetes cluster
+# 2. External dependencies configured (database, Redis, S3, etc.)
+# 3. Secrets created in Kubernetes (or use ExternalSecrets to sync with AWS Secrets Manager)
+# 4. An Ingress controller installed (for the Ingress resource)
+# 5. Metrics Server installed (for HPA)
+# 6. Optional: KEDA installed for queue-based autoscaling of workers
+# 7. Optional: Prometheus + Prometheus Adapter for custom metrics
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: demo-command-center
+  labels:
+    name: demo-command-center
+    environment: {{ .Values.environment | default "production" }}
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-command-center
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+---
+# Role and RoleBinding for pod permissions (if needed for Kubernetes API access)
+# Adjust rules based on what your application needs to do in the cluster
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: demo-command-center-k8s-access
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]  # For example, if app needs to monitor its own pods
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: demo-command-center-k8s-access
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+subjects:
+- kind: ServiceAccount
+  name: demo-command-center
+  namespace: demo-command-center
+roleRef:
+  kind: Role
+  name: demo-command-center-k8s-access
+  apiGroup: rbac.authorization.k8s.io
+---
+# ConfigMap for non-sensitive configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: demo-command-center-config
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+data:
+  # Application configuration (non-sensitive)
+  APP_ENV: "production"
+  APP_NAME: "demo-command-center-agent"
+  APP_DEBUG: "false"
+  # Note: VERSION would typically be set via CI/CD pipeline or environment
+  # APP_VERSION: "1.0.0"
+  TENANT_ID: "placeholder-tenant-id"  # Override via secret or external source
+  DEFAULT_TIMEZONE: "UTC"
+  DEFAULT_LOCALE: "en-IN"
+  DB_REQUIRE_TLS: "true"
+  # Feature flags (example - adjust based on your features)
+  DEMO_COMMAND_CENTER_ENABLED: "false"
+  DEMO_SCHEDULING_ENABLED: "false"
+  DEMO_POST_CONVERSION_ENABLED: "false"
+  DEMO_PAYMENTS_ENABLED: "false"
+  CASHFREE_ORDER_ENABLED: "false"
+  CASHFREE_PAYMENT_LINK_ENABLED: "false"
+  DEMO_AUTOMATIC_PAYMENT_LINK_ENABLED: "false"
+  PAYMENT_RECONCILIATION_ENABLED: "false"
+  DEMO_OUTBOUND_PAUSED: "true"
+  DEMO_NEW_BOOKINGS_PAUSED: "true"
+  META_DIRECT_WEBHOOK_ENABLED: "false"
+  META_OUTBOUND_ENABLED: "false"
+  META_OUTBOUND_PAUSED: "true"
+  CASHFREE_ENV: "production"
+  # AWS-specific configs (if using AWS services from K8s)
+  AWS_REGION: "ap-south-1"
+  # Note: Actual AWS credentials should be handled via IRSA/eks-pod-identity-agent
+  # or similar, not passed as environment variables for security
+---
+# Secret for sensitive configuration
+# NOTE: In production, consider using ExternalSecrets Operator to sync with AWS Secrets Manager
+# or HashiCorp Vault, or use CSI drivers for secret management.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: demo-command-center-secrets
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/part-of: demo-command-center
+type: Opaque
+stringData:
+  # These values should be populated from your secret management system
+  # Examples (replace with actual values or use external secret operators):
+  #
+  # DATABASE_URL: "postgresql://user:password@host:5432/dbname"
+  # REDIS_URL: "redis://:password@host:6379"
+  # FIELD_ENCRYPTION_KEY: "base64-encoded-32-byte-key"
+  # AUDIT_HASH_KEY: "base64-encoded-32-byte-key"
+  # INTERNAL_HMAC_KEY_GRANTS: '{"key-id-1":{"secret":"secret1","source":"source1","scopes":["read","write"]}}'
+  # LEAD_INTAKE_SHARED_SECRET: "your-shared-secret-here"
+  # ONBOARDING_AGENT_SHARED_SECRET: "your-shared-secret-here"
+  # NXTUTORS_WEBSITE_SHARED_SECRET: "your-shared-secret-here"
+  # META_WHATSAPP_ACCESS_TOKEN: "your-token-here"
+  # META_WHATSAPP_APP_SECRET: "your-app-secret-here"
+  # META_WHATSAPP_VERIFY_TOKEN: "your-verify-token-here"
+  # CASHFREE_APP_ID: "your-app-id-here"
+  # CASHFREE_SECRET_KEY: "your-secret-key-here"
+  # OPENAI_API_KEY: "your-openai-api-key-here"
+  #
+  # For initial deployment, create these manually or via your CI/CD pipeline:
+  #
+  # kubectl create secret generic demo-command-center-secrets \\
+  #   --namespace=demo-command-center \\
+  #   --from-literal=DATABASE_URL="..." \\
+  #   --from-literal=REDIS_URL="..." \\
+  #   ... etc ...
+  #
+  # Or use tools like:
+  # - ExternalSecrets (https://external-secrets.io/)
+  # - AWS Secrets Manager Controller for Kubernetes
+  # - HashiCorp Vault CSI Provider
+  # - Azure Key Vault Provider for Secrets Store CSI
+  # - GCP Secret Manager CSI Driver
+  #
+  # Placeholder values (must be changed before deployment):
+  DATABASE_URL: "CHANGE-ME-POSTGRES-URL"
+  REDIS_URL: "CHANGE-ME-REDIS-URL"
+  FIELD_ENCRYPTION_KEY: "CHANGE-ME-32-BYTE-BASE64-ENCODED-KEY"
+  AUDIT_HASH_KEY: "CHANGE-ME-32-BYTE-BASE64-ENCODED-KEY"
+  INTERNAL_HMAC_KEY_GRANTS: '{"placeholder-key":{"secret":"placeholder","source":"placeholder","scopes":["read","write"]}}'
+  LEAD_INTAKE_SHARED_SECRET: "CHANGE-ME-LEAD-INTAKE-SECRET"
+  ONBOARDING_AGENT_SHARED_SECRET: "CHANGE-ME-ONBOARDING-AGENT-SECRET"
+  NXTUTORS_WEBSITE_SHARED_SECRET: "CHANGE-ME-WEBSITE-SHARED-SECRET"
+  META_WHATSAPP_ACCESS_TOKEN: "CHANGE-ME-WHATSAPP-ACCESS-TOKEN"
+  META_WHATSAPP_APP_SECRET: "CHANGE-ME-WHATSAPP-APP-SECRET"
+  META_WHATSAPP_VERIFY_TOKEN: "CHANGE-ME-WHATSAPP-VERIFY-TOKEN"
+  CASHFREE_APP_ID: "CHANGE-ME-CASHFREE-APP-ID"
+  CASHFREE_SECRET_KEY: "CHANGE-ME-CASHFREE-SECRET-KEY"
+  OPENAI_API_KEY: "CHANGE-ME-OPENAI-API-KEY"
+  # Add other secrets as needed from your runtime_secrets configuration
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-command-center-api
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: demo-command-center
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 3  # Adjust based on load; matches prod desired count
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-command-center
+      app.kubernetes.io/instance: demo-command-center-api
+      app.kubernetes.io/component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-command-center
+        app.kubernetes.io/instance: demo-command-center-api
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: demo-command-center
+      annotations:
+        # Enable Prometheus scraping if using Prometheus
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+        # Inject AWS IAM role for service account (if using IRSA)
+        # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>
+    spec:
+      serviceAccountName: demo-command-center
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        supplementalGroups: [10001]
+      containers:
+      - name: api
+        image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST  # Update via CI/CD
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: demo-command-center-config
+        - secretRef:
+            name: demo-command-center-secrets
+        # Additional environment variables that might be needed
+        env:
+        - name: AWS_ACCOUNT_ID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['eks.amazonaws.com/uid']  # Example, adjust based on your setup
+          # Alternative: Use downward API or define as static if known
+        - name: AWS_REGION
+          value: "ap-south-1"
+        # Resources based on ECS task definition (512 CPU units = 0.5 vCPU, 1024 MB memory)
+        resources:
+          requests:
+            cpu: 500m   # 0.5 vCPU (512 / 1024 * 1000m)
+            memory: 1Gi
+          limits:
+            cpu: 1000m  # 1 vCPU
+            memory: 2Gi
+        # Liveness and readiness probes
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 30
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+            - ALL
+        # Volume mounts (if needed for tmp, certificates, etc.)
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: dns-config
+          mountPath: /etc/resolv.conf
+          subPath: resolv.conf
+          readOnly: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: dns-config
+        configMap:
+          name: kube-dns
+          optional: true
+---
+# API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-command-center-api
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  selector:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-api
+    app.kubernetes.io/component: api
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
+  type: ClusterIP
+---
+# API Ingress (optional - requires Ingress controller)
+# Uncomment and configure if you want to expose the API via Ingress
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: demo-command-center-api-ingress
+#   namespace: demo-command-center
+#   labels:
+#     app.kubernetes.io/name: demo-command-center
+#     app.kubernetes.io/instance: demo-command-center-api
+#     app.kubernetes.io/part-of: demo-command-center
+#   annotations:
+#     # NGINX Ingress Controller example
+#     nginx.ingress.kubernetes.io/rewrite-target: /$2
+#     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#     # cert-manager annotation for TLS (if using cert-manager)
+#     # cert-manager.io/cluster-issuer: letsencrypt-prod
+# spec:
+#   ingressClassName: nginx  # or your ingress class (alb, gce, traefik, etc.)
+#   tls:
+#   - hosts:
+#     - api.demo.example.com  # Replace with your domain
+#     secretName: demo-command-center-api-tls
+#   rules:
+#   - host: api.demo.example.com  # Replace with your domain
+#     http:
+#       paths:
+#       - path: /(/|$)(.*)
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: demo-command-center-api
+#             port:
+#               number: 80
+# ---
+# Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-command-center-worker
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: demo-command-center
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  replicas: 3  # Base replicas; will be scaled by HPA/KEDA
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-command-center
+      app.kubernetes.io/instance: demo-command-center-worker
+      app.kubernetes.io/component: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-command-center
+        app.kubernetes.io/instance: demo-command-center-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: demo-command-center
+      annotations:
+        # prometheus.io/scrape: "true"
+        # prometheus.io/port: "8080"
+        # prometheus.io/path: "/metrics"
+        # eks.amazonaws.com/role-arn: arn:aws:iam::<ACCOUNT_ID>:role/<ROLE_NAME>
+    spec:
+      serviceAccountName: demo-command-center
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        supplementalGroups: [10001]
+      containers:
+      - name: worker
+        image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST  # Update via CI/CD
+        imagePullPolicy: IfNotPresent
+        command: ["python", "-m", "demo_command_center.workers"]
+        envFrom:
+        - configMapRef:
+            name: demo-command-center-config
+        - secretRef:
+            name: demo-command-center-secrets
+        env:
+        - name: AWS_REGION
+          value: "ap-south-1"
+        # Resources based on ECS task definition (same as API)
+        resources:
+          requests:
+            cpu: 500m   # 0.5 vCPU
+            memory: 1Gi
+          limits:
+            cpu: 1000m  # 1 vCPU
+            memory: 2Gi
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+            - ALL
+      # Note: For worker autoscaling based on queue depth, consider:
+      # 1. Using KEDA (Kubernetes Event-driven Autoscaling) with AWS SQS scaler
+      # 2. Using Prometheus Adapter with custom metrics from CloudWatch
+      # 3. Using a custom metrics adapter
+      # Example KEDA ScaledObject (if KEDA is installed):
+      # apiVersion: keda.sh/v1alpha1
+      # kind: ScaledObject
+      # metadata:
+      #   name: demo-command-center-worker-scaler
+      #   namespace: demo-command-center
+      # spec:
+      #   scaleTargetRef:
+      #     name: demo-command-center-worker
+      #   minReplicaCount: 3
+      #   maxReplicaCount: 24
+      #   triggers:
+      #   - type: aws-sqs-queue
+      #     metadata:
+      #       queueURL: https://sqs.ap-south-1.amazonaws.com/ACCOUNT_ID/queue-name
+      #       awsRegion: ap-south-1
+      #       queueLength: "20"  # Target queue length (matches worker_queue_depth_target)
+      #       credentials:
+      #         name: aws-credentials
+      #         key: accessKeyId
+      #   pollInterval: 30
+      #   cooldownPeriod: 300
+---
+# Evaluation Task Deployment (optional - for on-demand evaluation)
+# Uncomment if you want to run evaluation tasks as a Deployment (for continuous evaluation)
+# Alternatively, run these as Jobs when needed via cron or manual triggers
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: demo-command-center-evaluation
+#   namespace: demo-command-center
+#   labels:
+#     app.kubernetes.io/name: demo-command-center
+#     app.kubernetes.io/instance: demo-command-center-evaluation
+#     app.kubernetes.io/component: evaluation
+#     app.kubernetes.io/part-of: demo-command-center
+#     app.kubernetes.io/managed-by: kubectl
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app.kubernetes.io/name: demo-command-center
+#       app.kubernetes.io/instance: demo-command-center-evaluation
+#       app.kubernetes.io/component: evaluation
+#   strategy:
+#     type: RollingUpdate
+#     rollingUpdate:
+#       maxSurge: 25%
+#       maxUnavailable: 25%
+#   template:
+#     metadata:
+#       labels:
+#         app.kubernetes.io/name: demo-command-center
+#         app.korea.io/instance: demo-command-center-evaluation
+#         app.kubernetes.io/component: evaluation
+#         app.kubernetes.io/part-of: demo-command-center
+#     spec:
+#       serviceAccountName: demo-command-center
+#       securityContext:
+#         runAsNonRoot: true
+#         runAsUser: 10001
+#         runAsGroup: 10001
+#         fsGroup: 10001
+#         supplementalGroups: [10001]
+#       containers:
+#       - name: evaluation
+#         image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST
+#         imagePullPolicy: IfNotPresent
+#         command: ["python", "-m", "demo_command_center.cli.evaluate_drift"]
+#         envFrom:
+#         - configMapRef:
+#             name: demo-command-center-config
+#         - secretRef:
+#             name: demo-command-center-secrets
+#         env:
+#         - name: AWS_REGION
+#           value: "ap-south-1"
+#         resources:
+#           requests:
+#             cpu: 500m   # 0.5 vCPU
+#             memory: 1Gi
+#           limits:
+#             cpu: 1000m  # 1 vCPU
+#             memory: 2Gi
+#         securityContext:
+#           allowPrivilegeEscalation: false
+#           readOnlyRootFilesystem: true
+#           runAsNonRoot: true
+#           runAsUser: 10001
+#           capabilities:
+#             drop:
+#             - ALL
+#       restartPolicy: Always
+# ---
+# Scheduled Jobs as CronJobs
+# These replace the EventBridge Scheduler functionality from AWS
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: model-evaluation
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: model-evaluation
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  schedule: "0 2 * * *"  # Daily at 2:00 AM UTC (matches evaluation_schedule_expression)
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: demo-command-center
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            supplementalGroups: [10001]
+          restartPolicy: OnFailure
+          containers:
+          - name: evaluation
+            image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "demo_command_center.cli.evaluate_drift"]
+            envFrom:
+            - configMapRef:
+                name: demo-command-center-config
+            - secretRef:
+                name: demo-command-center-secrets
+            env:
+            - name: AWS_REGION
+              value: "ap-south-1"
+            resources:
+              requests:
+                cpu: 500m   # 0.5 vCPU
+                memory: 1Gi
+              limits:
+                cpu: 1000m  # 1 vCPU
+                memory: 2Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 10001
+              capabilities:
+                drop:
+                - ALL
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-reconciliation
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: payment-reconciliation
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  schedule: "*/15 * * * *"  # Every 15 minutes (matches reconciliation_schedule_expression)
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: demo-command-center
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            supplementalGroups: [10001]
+          restartPolicy: OnFailure
+          containers:
+          - name: reconciliation
+            image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "demo_command_center.cli.reconcile_payments"]
+            envFrom:
+            - configMapRef:
+                name: demo-command-center-config
+            - secretRef:
+                name: demo-command-center-secrets
+            env:
+            - name: AWS_REGION
+              value: "ap-south-1"
+            resources:
+              requests:
+                cpu: 500m   # 0.5 vCPU
+                memory: 1Gi
+              limits:
+                cpu: 1000m  # 1 vCPU
+                memory: 2Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 10001
+              capabilities:
+                drop:
+                - ALL
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention-cleanup
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: retention-cleanup
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  schedule: "30 2 * * *"  # Daily at 2:30 AM UTC (matches retention_schedule_expression)
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: demo-command-center
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            supplementalGroups: [10001]
+          restartPolicy: OnFailure
+          containers:
+          - name: cleanup
+            image: REPLACE_WITH_ACCOUNT_ID.dkr.ecr.REGION.amazonaws.com/demo-command-center:SHA256_DIGEST
+            imagePullPolicy: IfNotPresent
+            command: ["python", "-m", "demo_command_center.cli.retention_cleanup"]
+            envFrom:
+            - configMapRef:
+                name: demo-command-center-config
+            - secretRef:
+                name: demo-command-center-secrets
+            env:
+            - name: AWS_REGION
+              value: "ap-south-1"
+            resources:
+              requests:
+                cpu: 500m   # 0.5 vCPU
+                memory: 1Gi
+              limits:
+                cpu: 1000m  # 1 vCPU
+                memory: 2Gi
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: true
+              runAsNonRoot: true
+              runAsUser: 10001
+              capabilities:
+                drop:
+                - ALL
+---
+# Horizontal Pod Autoscaler for API (based on CPU utilization)
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: demo-command-center-api-hpa
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: demo-command-center-api
+  minReplicas: 3
+  maxReplicas: 12
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60  # Matches autoscaling_cpu_target
+---
+# Note: For worker autoscaling based on queue depth, consider using:
+# 1. KEDA with AWS SQS scaler (recommended for SQS-based workloads)
+# 2. Prometheus Adapter with custom metrics from CloudWatch
+# 3. Custom metrics adapter
+# See commented KEDA ScaledObject example in the Worker Deployment section above.
+---
+# Pod Disruption Budget for API
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: demo-command-center-api-pdb
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-api
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  minAvailable: 2  # At least 2 pods should remain available during voluntary disruptions
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-command-center
+      app.kubernetes.io/instance: demo-command-center-api
+      app.kubernetes.io/component: api
+---
+# Pod Disruption Budget for Worker
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: demo-command-center-worker-pdb
+  namespace: demo-command-center
+  labels:
+    app.kubernetes.io/name: demo-command-center
+    app.kubernetes.io/instance: demo-command-center-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: demo-command-center
+spec:
+  minAvailable: 2  # At least 2 workers should remain available during voluntary disruptions
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-command-center
+      app.kubernetes.io/instance: demo-command-center-worker
+      app.kubernetes.io/component: worker
+---
+# Note: For production deployments, consider:
+# 1. Using a GitOps tool like Argo CD or Flux for continuous deployment
+# 2. Implementing proper image promotion with digests (not tags)
+# 3. Using tools like Trivy or Snyk for image scanning in your CI/CD
+# 4. Setting up proper monitoring and logging (Prometheus, Grafana, Loki, etc.)
+# 5. Using Istio/Linkerd for service mesh if needed
+# 6. Implementing backup and disaster recovery strategies
+# 7. Regularly updating base images and dependencies
+# 8. Conducting regular security audits and penetration tests
+# 9. Using pod security standards (restricted) if your cluster supports it
+# 10. Considering service accounts with minimal required permissions (least privilege)
+# 11. For AWS EKS clusters: Use IAM Roles for Service Accounts (IRSA) or
+#     eks-pod-identity-agent for AWS service access without storing credentials
+# 12. For secrets management: Consider ExternalSecrets Operator to sync with AWS Secrets Manager
+# 13. For ingress: Consider AWS Load Balancer Controller (ALB Ingress) for EKS
+# 14. For monitoring: Consider CloudWatch Container Insights or Prometheus + Grafana
+# 15. For logging: Consider CloudWatch Logs, FluentBit, or Loki stack
