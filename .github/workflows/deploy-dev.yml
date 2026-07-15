@@ -2,13 +2,26 @@ name: Deploy Dev
 on:
   push:
     branches: [main]
+    paths:
+      - 'infrastructure/**'
+      - '.github/workflows/deploy-*.yml'
+      - 'Dockerfile'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'src/**'
+    paths-ignore:
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'CONTRIBUTING.md'
+      - 'docs/**'
+      - '*.md'
   workflow_dispatch:
 permissions:
   contents: read
   id-token: write
 jobs:
   preflight:
-    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     environment: dev
     steps:
@@ -45,17 +58,19 @@ jobs:
             fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
-            printf 'Missing required dev deployment configuration names:\n' >&2
+            printf 'Required dev deployment configuration names:\n' >&2
             printf ' - %s\n' "${missing[@]}" >&2
             exit 1
           fi
           echo "Dev deployment preflight passed without printing secret values."
   build-and-deploy:
-    if: github.event_name == 'workflow_dispatch' || vars.DEPLOY_DEV_ENABLED == 'true'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     needs: preflight
     runs-on: ubuntu-latest
     environment: dev
-    concurrency: {group: demo-command-center-dev, cancel-in-progress: false}
+    concurrency:
+      group: demo-command-center-dev
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4

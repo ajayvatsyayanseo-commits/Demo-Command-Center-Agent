@@ -23,6 +23,8 @@ runs:
         tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}
         provenance: true
         sbom: true
+        cache-from: type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache
+        cache-to: type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache,mode=max
     - id: digest
       shell: bash
       env:
