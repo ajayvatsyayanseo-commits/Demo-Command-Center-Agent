@@ -79,9 +79,12 @@ runs:
         SMOKE_URL: ${{ inputs.smoke-url }}
       run: |
         set -euo pipefail
+        aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --desired-count 0 >/dev/null
+        aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --desired-count 0 >/dev/null
+        timeout 600 aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
         aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$API_TASK_ARN" --desired-count 1 >/dev/null
         aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$WORKER_TASK_ARN" --desired-count 1 >/dev/null
-        aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
+        timeout 900 aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
         if [ -n "${SMOKE_URL:-}" ]; then
           curl --fail --silent --show-error "$SMOKE_URL/health/live" >/dev/null
           curl --fail --silent --show-error "$SMOKE_URL/health/ready" >/dev/null
@@ -99,20 +102,19 @@ runs:
         OLD_WORKER: ${{ steps.task.outputs.old-worker }}
       run: |
         set -euo pipefail
+        aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --desired-count 0 >/dev/null
+        aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --desired-count 0 >/dev/null
+        timeout 600 aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
         if [ -n "$OLD_API" ] && [ "$OLD_API" != "None" ]; then
           old_api_image="$(aws ecs describe-task-definition --task-definition "$OLD_API" --query 'taskDefinition.containerDefinitions[0].image' --output text || true)"
           if [[ "$old_api_image" != *":bootstrap" ]]; then
-            aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$OLD_API" >/dev/null
-          else
-            aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --desired-count 0 >/dev/null
+            aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$OLD_API" --desired-count 1 >/dev/null
           fi
         fi
         if [ -n "$OLD_WORKER" ] && [ "$OLD_WORKER" != "None" ]; then
           old_worker_image="$(aws ecs describe-task-definition --task-definition "$OLD_WORKER" --query 'taskDefinition.containerDefinitions[0].image' --output text || true)"
           if [[ "$old_worker_image" != *":bootstrap" ]]; then
-            aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$OLD_WORKER" >/dev/null
-          else
-            aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --desired-count 0 >/dev/null
+            aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$OLD_WORKER" --desired-count 1 >/dev/null
           fi
         fi
         timeout 600 aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
