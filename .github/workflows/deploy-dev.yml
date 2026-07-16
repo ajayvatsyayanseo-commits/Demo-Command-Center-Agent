@@ -5,6 +5,7 @@ on:
     paths:
       - 'infrastructure/**'
       - '.github/workflows/deploy-*.yml'
+      - '.github/actions/**'
       - 'Dockerfile'
       - 'pyproject.toml'
       - 'uv.lock'

@@ -44,6 +44,12 @@ runs:
           aws ecs describe-task-definition --task-definition "$family" --query taskDefinition > "${prefix}.json"
           jq --arg image "$IMAGE_URI" '
             .containerDefinitions |= map(.image=$image) |
+            .containerDefinitions |= map(
+              .environment = (
+                (.environment // [] | map(select(.name != "ALLOWED_HOSTS")))
+                + [{"name":"ALLOWED_HOSTS","value":"[\"*\"]"}]
+              )
+            ) |
             del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy)
           ' "${prefix}.json" > "${prefix}-next.json"
           aws ecs register-task-definition --cli-input-json "file://${prefix}-next.json" --query taskDefinition.taskDefinitionArn --output text
@@ -94,9 +100,19 @@ runs:
       run: |
         set -euo pipefail
         if [ -n "$OLD_API" ] && [ "$OLD_API" != "None" ]; then
-          aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$OLD_API" >/dev/null
+          old_api_image="$(aws ecs describe-task-definition --task-definition "$OLD_API" --query 'taskDefinition.containerDefinitions[0].image' --output text || true)"
+          if [[ "$old_api_image" != *":bootstrap" ]]; then
+            aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$OLD_API" >/dev/null
+          else
+            aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --desired-count 0 >/dev/null
+          fi
         fi
         if [ -n "$OLD_WORKER" ] && [ "$OLD_WORKER" != "None" ]; then
-          aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$OLD_WORKER" >/dev/null
+          old_worker_image="$(aws ecs describe-task-definition --task-definition "$OLD_WORKER" --query 'taskDefinition.containerDefinitions[0].image' --output text || true)"
+          if [[ "$old_worker_image" != *":bootstrap" ]]; then
+            aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$OLD_WORKER" >/dev/null
+          else
+            aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --desired-count 0 >/dev/null
+          fi
         fi
-        aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
+        timeout 600 aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
