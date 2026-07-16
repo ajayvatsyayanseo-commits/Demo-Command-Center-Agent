@@ -1,5 +1,5 @@
 name: Build immutable image
-description: Builds and pushes a commit-tagged image, returning its registry digest.
+description: Builds and pushes a run-attempt-tagged image, returning its registry digest.
 inputs:
   registry:
     required: true
@@ -20,11 +20,9 @@ runs:
       with:
         context: .
         push: true
-        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}
+        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}-${{ github.run_attempt }}
         provenance: true
         sbom: true
-        cache-from: type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache
-        cache-to: type=registry,ref=${{ inputs.registry }}/${{ inputs.repository }}:buildcache,mode=max
     - id: digest
       shell: bash
       env:
