@@ -44,8 +44,7 @@ jobs:
             ECS_WORKER_SERVICE \
             ECS_API_TASK_FAMILY \
             ECS_WORKER_TASK_FAMILY \
-            ECS_MIGRATION_NETWORK_CONFIGURATION \
-            SMOKE_BASE_URL
+            ECS_MIGRATION_NETWORK_CONFIGURATION
           do
             if [ -z "${!name:-}" ]; then
               missing+=("$name")

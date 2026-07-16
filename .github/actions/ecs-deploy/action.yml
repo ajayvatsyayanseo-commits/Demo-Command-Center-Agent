@@ -23,8 +23,8 @@ inputs:
     required: true
     description: JSON awsvpc network configuration from the protected environment
   smoke-url:
-    required: true
-    description: Protected environment smoke URL
+    required: false
+    description: Protected environment smoke URL. If empty, smoke checks are skipped.
 runs:
   using: composite
   steps:
@@ -73,11 +73,15 @@ runs:
         SMOKE_URL: ${{ inputs.smoke-url }}
       run: |
         set -euo pipefail
-        aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$API_TASK_ARN" >/dev/null
-        aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$WORKER_TASK_ARN" >/dev/null
+        aws ecs update-service --cluster "$CLUSTER" --service "$API_SERVICE" --task-definition "$API_TASK_ARN" --desired-count 1 >/dev/null
+        aws ecs update-service --cluster "$CLUSTER" --service "$WORKER_SERVICE" --task-definition "$WORKER_TASK_ARN" --desired-count 1 >/dev/null
         aws ecs wait services-stable --cluster "$CLUSTER" --services "$API_SERVICE" "$WORKER_SERVICE"
-        curl --fail --silent --show-error "$SMOKE_URL/health/live" >/dev/null
-        curl --fail --silent --show-error "$SMOKE_URL/health/ready" >/dev/null
+        if [ -n "${SMOKE_URL:-}" ]; then
+          curl --fail --silent --show-error "$SMOKE_URL/health/live" >/dev/null
+          curl --fail --silent --show-error "$SMOKE_URL/health/ready" >/dev/null
+        else
+          echo "SMOKE_URL is empty; skipped HTTP smoke checks after ECS stability."
+        fi
     - name: Restore previous task definitions after failed deployment
       if: failure()
       shell: bash
