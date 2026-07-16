@@ -1,5 +1,5 @@
 name: Build immutable image
-description: Builds and pushes a run-attempt-tagged image, returning its registry digest.
+description: Builds and pushes a run-id-tagged image, returning its registry digest.
 inputs:
   registry:
     required: true
@@ -20,7 +20,7 @@ runs:
       with:
         context: .
         push: true
-        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}-${{ github.run_attempt }}
+        tags: ${{ inputs.registry }}/${{ inputs.repository }}:${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
         provenance: true
         sbom: true
     - id: digest
