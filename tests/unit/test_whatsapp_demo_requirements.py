@@ -43,7 +43,7 @@ def _handler(cipher: PayloadCipher) -> DefaultInboxEventHandler:
     )
 
 
-def _event(text: str) -> AgentEventEnvelope:
+def _event(text: str, *, actor_id: str = "opaque-user") -> AgentEventEnvelope:
     now = datetime.now(UTC)
     return AgentEventEnvelope.model_validate(
         {
@@ -58,7 +58,7 @@ def _event(text: str) -> AgentEventEnvelope:
             "correlation_id": "corr-requirements",
             "causation_id": "provider-message-ref",
             "conversation_id": "conversation-ref",
-            "actor": {"type": "user", "id": "opaque-user"},
+            "actor": {"type": "user", "id": actor_id},
             "subject": {"lead_id": "lead-ref", "user_id": None, "tutor_id": None, "demo_id": None},
             "idempotency_key": f"lead:message:{uuid4()}",
             "traceparent": None,
@@ -166,6 +166,37 @@ async def test_class_city_reply_after_subject_clear_prompts_for_subject_not_old_
     assert "Mathematics" not in variables["body"]
 
 
+@pytest.mark.asyncio
+async def test_demo_reply_uses_actor_phone_not_opaque_conversation_id() -> None:
+    cipher = _cipher()
+    demo_id = uuid4()
+    conversation = ConversationState(
+        tenant_id="nxtutors",
+        demo_case_id=demo_id,
+        conversation_id="conversation-ref",
+        current_step="collect_class_city",
+        safe_summary="Demo requested; requirements pending.",
+        flow_version="demo-flow-v1",
+        version=1,
+    )
+    requirement = DemoRequirement(
+        demo_case_id=demo_id,
+        subject=None,
+        timezone="Asia/Kolkata",
+        preferred_times=[],
+        missing_fields=["class_level", "subject", "location_region", "mode", "preferred_times"],
+        version=1,
+    )
+    fake = FakeSession([conversation, requirement])
+
+    await _handler(cipher).handle(
+        _event("class 7 Gurgaon", actor_id="919999999999"),
+        cast(AsyncSession, fake),
+    )
+
+    outbox = next(item for item in fake.added if isinstance(item, AgentOutboxEvent))
+    payload = _outbox_payload(outbox, cipher)
+    assert payload["recipient_ref"] == "919999999999"
 @pytest.mark.asyncio
 async def test_replacement_subject_and_timing_complete_requirements() -> None:
     cipher = _cipher()

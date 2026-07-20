@@ -71,6 +71,27 @@ class DemoHandoffPayload(BaseModel):
     consent_refs: list[str] = Field(max_length=20)
 
 
+def _reply_recipient_ref(event: AgentEventEnvelope) -> str:
+    """Return the WhatsApp-addressable recipient for a Lead Intake-owned send.
+
+    Lead Intake may use ``conversation_id`` for durable session state, and that
+    value is not guaranteed to be a Meta WhatsApp recipient.  Its internal
+    outbound endpoint sends directly to ``recipient_ref``, so replies must use
+    the actor's WhatsApp phone when available while preserving conversation_id
+    separately for state and idempotency.
+    """
+
+    actor_ref = str(event.actor.id or "").strip()
+    if _looks_like_whatsapp_recipient(actor_ref):
+        return actor_ref
+    return event.conversation_id
+
+
+def _looks_like_whatsapp_recipient(value: str) -> bool:
+    normalized = value.removeprefix("+").strip()
+    return normalized.isdigit() and 8 <= len(normalized) <= 15
+
+
 class OnboardingAcceptedPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
     demo_ref: str = Field(min_length=1, max_length=255)
@@ -612,7 +633,7 @@ class DefaultInboxEventHandler:
             "event_id": str(outbox_event_id),
             "event_type": "outbound.delivery.requested.v1",
             "demo_id": str(demo_id),
-            "recipient_ref": event.conversation_id,
+            "recipient_ref": _reply_recipient_ref(event),
             "template_or_message_ref": template_ref,
             "variables": variables,
             "message_category": "service",

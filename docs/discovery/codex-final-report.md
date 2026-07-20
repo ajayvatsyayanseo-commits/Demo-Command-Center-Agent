@@ -820,3 +820,9 @@ The checks validate a compileable architecture scaffold, not implemented busines
 ## Git statement
 
 No Git commit, amend, squash, tag, push, branch, remote, credential, or history change was made. The three inspected repositories remained clean. The new folder was intentionally not initialized as a Git repository, so no commit exists for this phase.
+
+## 2026-07-20 deployment-response addendum
+
+- Fixed the Demo Command Center WhatsApp reply recipient selection so Lead Intake receives a WhatsApp-addressable actor phone when available, while conversation_id remains the durable session key.
+- Evidence: uff check src tests scripts passed; full pytest -q passed with 190 tests.
+- make check could not run in this Windows shell because make is not installed; the underlying lint and test commands were executed directly.
