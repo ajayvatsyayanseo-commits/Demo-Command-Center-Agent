@@ -479,6 +479,10 @@ class DefaultInboxEventHandler:
             version=1,
         )
         session.add(demo)
+        # The follow-on requirement, conversation-state, transition, and outbox rows all
+        # carry explicit foreign keys to the deterministic demo id.  Flush the parent
+        # case first so PostgreSQL never has to rely on implicit unit-of-work ordering.
+        await session.flush()
         session.add(initial_requirement)
         session.add(
             ConversationState(
