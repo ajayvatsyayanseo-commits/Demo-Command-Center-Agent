@@ -500,16 +500,27 @@ class DefaultInboxEventHandler:
             ("nxtutors-website", "user", payload.user_ref),
         ):
             if external_id:
-                session.add(
-                    ExternalIdentityMapping(
-                        tenant_id=event.tenant_id,
-                        system=system,
-                        entity_type=entity_type,
-                        external_id=external_id,
-                        internal_id=demo_id,
-                        last_verified_at=event.occurred_at,
+                existing_mapping = await session.scalar(
+                    select(ExternalIdentityMapping).where(
+                        ExternalIdentityMapping.tenant_id == event.tenant_id,
+                        ExternalIdentityMapping.system == system,
+                        ExternalIdentityMapping.entity_type == entity_type,
+                        ExternalIdentityMapping.external_id == external_id,
                     )
                 )
+                if existing_mapping is None:
+                    session.add(
+                        ExternalIdentityMapping(
+                            tenant_id=event.tenant_id,
+                            system=system,
+                            entity_type=entity_type,
+                            external_id=external_id,
+                            internal_id=demo_id,
+                            last_verified_at=event.occurred_at,
+                        )
+                    )
+                else:
+                    existing_mapping.last_verified_at = event.occurred_at
         session.add(
             DemoStateTransition(
                 demo_case_id=demo_id,
