@@ -834,3 +834,11 @@ No Git commit, amend, squash, tag, push, branch, remote, credential, or history 
 - Added regression coverage for Laravel candidate projection parsing and the requirement-complete WhatsApp shortlist path.
 - Evidence: `.venv\Scripts\python.exe -m ruff check src tests scripts` passed; `.venv\Scripts\python.exe -m pytest -q` passed with 192 tests.
 - `make check` still could not run in this Windows shell because `make` is not installed; the equivalent lint and test commands were executed directly.
+
+## 2026-07-20 website-gateway live addendum
+
+- Installed and deployed the Laravel Demo Command Center gateway into the live NXTutors website repository so the AWS Demo Command Center can query the authoritative MySQL website tables through signed internal routes.
+- Verified the deployed route exists and is protected: unsigned tutor candidate request returned `401` instead of `404`.
+- Verified a signed tutor candidate request against `https://www.nxtutors.com/internal/api/v1/demo-command-center/tutors/candidates` returned `200` from the live website gateway when sent with a stable service User-Agent.
+- Fixed the Demo Command Center website gateway client to send `NXtutors-Demo-Command-Center/1.0 (+https://demo.nxtutors.com)` because Cloudflare returned Error 1010 for default programmatic client fingerprints.
+- Evidence: website deployment run `29736801498` succeeded; `.venv\Scripts\python.exe -m pytest tests/unit/test_website_gateway_client.py -q` passed with 2 tests.

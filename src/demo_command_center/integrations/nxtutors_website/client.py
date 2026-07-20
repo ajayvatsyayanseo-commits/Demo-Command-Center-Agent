@@ -66,6 +66,10 @@ class NxtutorsWebsiteGateway:
             scopes=scopes,
             idempotency_key=idempotency_key,
         )
+        headers.setdefault(
+            "User-Agent",
+            "NXtutors-Demo-Command-Center/1.0 (+https://demo.nxtutors.com)",
+        )
         try:
             response = await self._client.request(
                 method,

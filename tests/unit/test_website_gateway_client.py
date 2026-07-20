@@ -28,6 +28,7 @@ async def test_website_gateway_resolves_purpose_bound_phone_recipients_without_r
         requests.append(request)
         body = json.loads(request.content)
         assert body["demo_ref"] == "demo-0001"
+        assert request.headers["User-Agent"].startswith("NXtutors-Demo-Command-Center/")
         assert request.headers["X-NXTutors-Scopes"] in {
             "demo:tutor-phone:read",
             "demo:profile-phone:read",
@@ -91,6 +92,7 @@ async def test_website_gateway_resolves_purpose_bound_phone_recipients_without_r
 async def test_website_gateway_reads_paginated_candidate_items() -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         assert request.url.path.endswith("/tutors/candidates")
+        assert request.headers["User-Agent"].startswith("NXtutors-Demo-Command-Center/")
         assert request.headers["X-NXTutors-Scopes"] == "demo:tutors:read"
         return httpx.Response(
             200,
