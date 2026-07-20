@@ -4,6 +4,51 @@ Date: 2026-07-14 (Asia/Calcutta). Scope: historical discovery plus continued loc
 inside the standalone Demo Command Center Agent repository. This report does not claim production
 readiness or live-provider validation.
 
+## 2026-07-20 WhatsApp demo requirement collection addendum
+
+Scope: Demo Command Center internal `whatsapp.handoff.demo.v1` handling after Lead Intake hands off
+a demo conversation. The change keeps Lead Intake as the only public Meta ingress/outbound WhatsApp
+sender.
+
+Implemented:
+
+- Existing WhatsApp demo conversations are now continued by `tenant_id` + `conversation_id` instead
+  of creating a new demo case for every later handoff event.
+- Demo requirements are deterministically extracted from text for class, subject/skill, city,
+  mode, and preferred time.
+- Subject corrections overwrite or clear earlier subjects. In particular, "not Mathematics" no
+  longer leaves Mathematics in the durable requirement summary; a replacement such as skating is
+  accepted when present.
+- Every Demo reply is still emitted as a durable encrypted `outbound.delivery.requested.v1` outbox
+  event to Lead Intake, with an event-derived `demo-reply:{event_id}` idempotency key.
+- The Makefile type target now runs `uv run python -m mypy src tests`, which avoids a Windows `uv`
+  script-path canonicalization failure in this workspace path.
+
+Local evidence from 2026-07-20:
+
+- `uv run ruff format --check src tests scripts`: 185 files formatted.
+- `uv run ruff check src tests scripts`: all checks passed.
+- `uv run python -m mypy src tests`: success over 180 source files.
+- `uv run python scripts/validate_contracts.py`: contracts valid, 10 schemas, 12 JSON files, 2 YAML
+  files, 21 OpenAPI operations.
+- `uv run python scripts/validate_workflows.py`: workflows valid, 7 workflows, 3 actions, 51 job
+  steps.
+- `uv run python scripts/validate_production_hygiene.py`: production hygiene valid, 148 Python files
+  inspected.
+- `uv run python scripts/validate_migrations.py`: migrations valid, 3 revisions, head
+  `20260713_000003`.
+- `uv run pytest --cov=demo_command_center --cov-report=term-missing`: 189 passed, 82.99% coverage.
+
+Notes:
+
+- The Windows host does not have `make` installed, so the Makefile-equivalent commands were run
+  manually in order.
+- The repository `.env` contains dev/live capability flags; it was temporarily hidden during the
+  settings/test gate and restored afterward so default settings tests were not polluted by local
+  dev configuration.
+- No live AWS/provider deployment was performed in this local implementation pass.
+- No Git commit, tag, push, or history change was made.
+
 ## Implementation continuation addendum
 
 The remainder of this file is the historical architecture-phase snapshot, including its original

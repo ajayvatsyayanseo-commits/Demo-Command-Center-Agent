@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from demo_command_center.config.settings import get_settings
+from demo_command_center.config.settings import Settings, get_settings
 
 
 def _status(configured: bool) -> dict[str, bool]:
@@ -15,8 +15,8 @@ def _status(configured: bool) -> dict[str, bool]:
     }
 
 
-def diagnostic_report() -> dict[str, Any]:
-    settings = get_settings()
+def diagnostic_report(settings: Settings | None = None) -> dict[str, Any]:
+    settings = settings or get_settings()
     return {
         "service": settings.app_name,
         "version": settings.app_version,

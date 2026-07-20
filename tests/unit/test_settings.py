@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 import pytest
 from pydantic import SecretStr, ValidationError
 
@@ -89,7 +91,7 @@ def test_secret_defaults_are_empty() -> None:
 )
 def test_capabilities_fail_closed(values: dict[str, object], message: str) -> None:
     with pytest.raises(ValidationError, match=message):
-        Settings.model_validate(values)
+        Settings(_env_file=None, **cast(dict[str, Any], values))
 
 
 def test_production_rejects_debug_insecure_transport_and_wildcards() -> None:

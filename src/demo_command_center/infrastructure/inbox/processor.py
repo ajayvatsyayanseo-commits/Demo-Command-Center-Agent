@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -87,8 +88,302 @@ class OnboardingCompletedPayload(BaseModel):
     completion_status: str = Field(pattern=r"^completed$")
 
 
+REQUIRED_DEMO_FIELDS: tuple[str, ...] = (
+    "class_level",
+    "subject",
+    "location_region",
+    "mode",
+    "preferred_times",
+)
+
+SUBJECT_ALIASES: dict[str, str] = {
+    "math": "Mathematics",
+    "maths": "Mathematics",
+    "mathematics": "Mathematics",
+    "science": "Science",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+    "english": "English",
+    "hindi": "Hindi",
+    "accounts": "Accounts",
+    "accountancy": "Accountancy",
+    "economics": "Economics",
+    "business studies": "Business Studies",
+    "computer": "Computer Science",
+    "computer science": "Computer Science",
+    "coding": "Coding",
+    "programming": "Programming",
+    "skating": "Skating",
+}
+
+CITY_ALIASES: dict[str, str] = {
+    "gurgaon": "Gurugram",
+    "gurugram": "Gurugram",
+    "delhi": "Delhi",
+    "new delhi": "New Delhi",
+    "noida": "Noida",
+    "faridabad": "Faridabad",
+    "ghaziabad": "Ghaziabad",
+    "mumbai": "Mumbai",
+    "bangalore": "Bengaluru",
+    "bengaluru": "Bengaluru",
+    "pune": "Pune",
+    "hyderabad": "Hyderabad",
+    "chennai": "Chennai",
+    "kolkata": "Kolkata",
+}
+
+BOARD_ALIASES: dict[str, str] = {
+    "cbse": "CBSE",
+    "icse": "ICSE",
+    "ib": "IB",
+    "igcse": "IGCSE",
+    "state board": "State Board",
+}
+
+MODE_ALIASES: dict[str, str] = {
+    "home": "home",
+    "home tuition": "home",
+    "offline": "home",
+    "online": "online",
+    "online classes": "online",
+    "either": "either",
+}
+
+TIME_ALIASES: dict[str, str] = {
+    "morning": "morning",
+    "afternoon": "afternoon",
+    "evening": "evening",
+    "weekend": "weekend",
+}
+
+
 class InboxEventHandler(Protocol):
     async def handle(self, event: AgentEventEnvelope, session: AsyncSession) -> None: ...
+
+
+def _normalise_text(text: str | None) -> str:
+    if not text:
+        return ""
+    value = text.lower()
+    value = value.replace("don't", "dont")
+    value = value.replace("feom", "from")
+    value = value.replace("sgart", "start")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _contains_negation(text: str) -> bool:
+    return any(
+        phrase in text
+        for phrase in (
+            " no ",
+            "no ",
+            " not ",
+            "dont want",
+            "do not want",
+            "wrong",
+            "change",
+            "instead",
+        )
+    )
+
+
+def _extract_alias(text: str, aliases: dict[str, str]) -> str | None:
+    for raw, canonical in sorted(aliases.items(), key=lambda item: len(item[0]), reverse=True):
+        if re.search(rf"(?<![a-z0-9]){re.escape(raw)}(?![a-z0-9])", text):
+            return canonical
+    return None
+
+
+def _subject_from_free_text(text: str) -> str | None:
+    match = re.search(
+        r"(?:for|subject is|subject|want(?: to do)?|need(?: tutor for)?)\s+([a-z][a-z &+-]{2,40})",
+        text,
+    )
+    if match is not None:
+        candidate = match.group(1).strip(" .,!?:;-")
+        if not any(token in candidate for token in (" it ", "begin", "start", "from start")):
+            aliased_candidate = _extract_alias(candidate, SUBJECT_ALIASES)
+            if aliased_candidate is not None:
+                return aliased_candidate
+            if candidate not in {"demo", "teacher", "tutor", "classes", "online", "home"}:
+                return candidate.title()
+    return _extract_alias(text, SUBJECT_ALIASES)
+
+
+def _extract_requirement_updates(
+    text: str | None,
+    *,
+    current_step: str,
+    current_subject: str | None = None,
+) -> dict[str, object]:
+    normalised = _normalise_text(text)
+    updates: dict[str, object] = {}
+    if not normalised:
+        return updates
+
+    negated_current_subject = False
+    if current_subject and _contains_negation(f" {normalised} "):
+        current = _normalise_text(current_subject)
+        if current in normalised or _extract_alias(normalised, SUBJECT_ALIASES) == current_subject:
+            updates["subject"] = None
+            negated_current_subject = True
+
+    class_match = re.search(r"(?:class|grade|std|standard)\s*([0-9]{1,2}|[a-z]+)", normalised)
+    if class_match is not None:
+        updates["class_level"] = f"Class {class_match.group(1).upper()}"
+
+    board = _extract_alias(normalised, BOARD_ALIASES)
+    if board is not None:
+        updates["board"] = board
+
+    city = _extract_alias(normalised, CITY_ALIASES)
+    if city is not None:
+        updates["location_region"] = city
+
+    subject_text = normalised
+    if negated_current_subject and " want " in f" {normalised} ":
+        subject_text = normalised.rsplit(" want ", maxsplit=1)[-1]
+    elif negated_current_subject and " instead " in f" {normalised} ":
+        subject_text = normalised.rsplit(" instead ", maxsplit=1)[-1]
+    elif negated_current_subject and " change " in f" {normalised} ":
+        subject_text = normalised.rsplit(" change ", maxsplit=1)[-1]
+    subject = _subject_from_free_text(subject_text)
+    if subject is not None:
+        if not (negated_current_subject and subject == current_subject):
+            updates["subject"] = subject
+
+    mode = _mode_from_text(normalised, current_step=current_step)
+    if mode is not None:
+        updates["mode"] = mode
+
+    preferred_time = _preferred_time_from_text(normalised, current_step=current_step)
+    if preferred_time is not None:
+        updates["preferred_times"] = [{"label": preferred_time}]
+
+    if "beginning" in normalised or "from start" in normalised or "starting" in normalised:
+        updates["learning_goal"] = "Start from the beginning"
+
+    return updates
+
+
+def _mode_from_text(text: str, *, current_step: str) -> str | None:
+    if current_step == "collect_mode":
+        if text == "1":
+            return "home"
+        if text == "2":
+            return "online"
+        if text == "3":
+            return "either"
+    return _extract_alias(text, MODE_ALIASES)
+
+
+def _preferred_time_from_text(text: str, *, current_step: str) -> str | None:
+    if current_step == "collect_preferred_times":
+        by_number = {"1": "morning", "2": "afternoon", "3": "evening", "4": "weekend"}
+        if text in by_number:
+            return by_number[text]
+    return _extract_alias(text, TIME_ALIASES)
+
+
+def _apply_requirement_updates(
+    requirement: DemoRequirement, updates: dict[str, object]
+) -> frozenset[str]:
+    changed: set[str] = set()
+    for field_name, value in updates.items():
+        if getattr(requirement, field_name) != value:
+            setattr(requirement, field_name, value)
+            changed.add(field_name)
+    return frozenset(changed)
+
+
+def _missing_requirement_fields(requirement: DemoRequirement) -> list[str]:
+    missing: list[str] = []
+    if not requirement.class_level:
+        missing.append("class_level")
+    if not requirement.subject:
+        missing.append("subject")
+    if not requirement.location_region:
+        missing.append("location_region")
+    if not requirement.mode:
+        missing.append("mode")
+    if not requirement.preferred_times:
+        missing.append("preferred_times")
+    return missing
+
+
+def _next_requirement_step(missing_fields: list[str]) -> str:
+    if "class_level" in missing_fields or "location_region" in missing_fields:
+        return "collect_class_city"
+    if "subject" in missing_fields:
+        return "collect_subject"
+    if "mode" in missing_fields:
+        return "collect_mode"
+    if "preferred_times" in missing_fields:
+        return "collect_preferred_times"
+    return "requirements_complete"
+
+
+def _safe_requirement_summary(requirement: DemoRequirement) -> str:
+    values = [
+        requirement.class_level,
+        requirement.subject,
+        requirement.location_region,
+        requirement.mode,
+        _preferred_time_label(requirement),
+    ]
+    summary = " | ".join(value for value in values if value)
+    return summary or "Demo requested; requirements pending."
+
+
+def _preferred_time_label(requirement: DemoRequirement) -> str | None:
+    if not requirement.preferred_times:
+        return None
+    first = requirement.preferred_times[0]
+    label = first.get("label") if isinstance(first, dict) else None
+    return label if isinstance(label, str) else None
+
+
+def _reply_variables(
+    requirement: DemoRequirement, *, changed_fields: frozenset[str]
+) -> dict[str, str]:
+    missing = requirement.missing_fields
+    body = _reply_body(requirement, changed_fields=changed_fields)
+    return {
+        "body": body,
+        "missing_fields": ",".join(missing),
+        "summary": _safe_requirement_summary(requirement),
+        "current_step": _next_requirement_step(missing),
+    }
+
+
+def _reply_body(requirement: DemoRequirement, *, changed_fields: frozenset[str]) -> str:
+    summary = _safe_requirement_summary(requirement)
+    missing = requirement.missing_fields
+    if "subject" in changed_fields and requirement.subject is None:
+        return (
+            "Got it — I removed the earlier subject. Which subject or skill should we arrange "
+            "the tutor/demo for?"
+        )
+    if "class_level" in missing or "location_region" in missing:
+        return "Got it. Which class is the student in, and which city should we arrange this in?"
+    if "subject" in missing:
+        return f"Got it. I have noted {summary}. Which subject or skill is this for?"
+    if "mode" in missing:
+        return (
+            f"Got it. I have noted {summary}. Do you prefer home tuition or online classes?\n\n"
+            "1. Home tuition\n2. Online classes\n3. Either is fine\n4. Talk to counsellor"
+        )
+    if "preferred_times" in missing:
+        return (
+            f"Got it. I have noted {summary}. What timing works best? How soon would you like "
+            "to start?\n\n1. Morning\n2. Afternoon\n3. Evening\n4. Weekend\n5. Type custom time"
+        )
+    return (
+        f"Perfect, I have the key details for {summary}. I will verify suitable tutor options "
+        "and move this ahead."
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,11 +434,38 @@ class DefaultInboxEventHandler:
 
     async def _start_demo(self, event: AgentEventEnvelope, session: AsyncSession) -> None:
         payload = DemoHandoffPayload.model_validate(event.payload)
+        existing_conversation = await session.scalar(
+            select(ConversationState).where(
+                ConversationState.tenant_id == event.tenant_id,
+                ConversationState.conversation_id == event.conversation_id,
+            )
+        )
+        if existing_conversation is not None:
+            await self._continue_demo(
+                event,
+                payload,
+                session,
+                service_window_expires_at=payload.service_window.expires_at,
+                conversation=existing_conversation,
+            )
+            return
         demo_id = uuid5(NAMESPACE_URL, f"nxtutors:demo:{event.event_id}")
         existing = await session.scalar(select(DemoCase.id).where(DemoCase.id == demo_id))
         if existing is not None:
             return
         timezone = self.default_timezone
+        initial_requirement = DemoRequirement(
+            demo_case_id=demo_id,
+            timezone=timezone,
+            preferred_times=[],
+            missing_fields=list(REQUIRED_DEMO_FIELDS),
+            version=1,
+        )
+        _apply_requirement_updates(
+            initial_requirement,
+            _extract_requirement_updates(payload.message.text, current_step="collect_requirements"),
+        )
+        initial_requirement.missing_fields = _missing_requirement_fields(initial_requirement)
         demo = DemoCase(
             id=demo_id,
             tenant_id=event.tenant_id,
@@ -157,22 +479,14 @@ class DefaultInboxEventHandler:
             version=1,
         )
         session.add(demo)
-        session.add(
-            DemoRequirement(
-                demo_case_id=demo_id,
-                timezone=timezone,
-                preferred_times=[],
-                missing_fields=["board", "class_level", "subject", "mode", "preferred_times"],
-                version=1,
-            )
-        )
+        session.add(initial_requirement)
         session.add(
             ConversationState(
                 tenant_id=event.tenant_id,
                 demo_case_id=demo_id,
                 conversation_id=event.conversation_id,
-                current_step="collect_requirements",
-                safe_summary="Demo requested; requirements pending.",
+                current_step=_next_requirement_step(initial_requirement.missing_fields),
+                safe_summary=_safe_requirement_summary(initial_requirement),
                 flow_version="demo-flow-v1",
                 version=1,
             )
@@ -210,18 +524,85 @@ class DefaultInboxEventHandler:
                 side_effects_completed=[],
             )
         )
-        outbox_event_id = uuid5(NAMESPACE_URL, f"nxtutors:requirements-request:{event.event_id}")
-        missing_fields = ["board", "class_level", "subject", "mode", "preferred_times"]
+        self._add_demo_reply_outbox(
+            session,
+            event=event,
+            demo_id=demo_id,
+            target_agent=event.source_agent,
+            service_window_expires_at=payload.service_window.expires_at,
+            template_ref="demo.collect_requirements.v1",
+            variables=_reply_variables(initial_requirement, changed_fields=frozenset()),
+        )
+
+    async def _continue_demo(
+        self,
+        event: AgentEventEnvelope,
+        payload: DemoHandoffPayload,
+        session: AsyncSession,
+        *,
+        service_window_expires_at: datetime,
+        conversation: ConversationState | None = None,
+    ) -> None:
+        if conversation is None:
+            conversation = await session.scalar(
+                select(ConversationState).where(
+                    ConversationState.tenant_id == event.tenant_id,
+                    ConversationState.conversation_id == event.conversation_id,
+                )
+            )
+        if conversation is None or conversation.demo_case_id is None:
+            raise ValueError("WhatsApp demo reply has no durable conversation state")
+        requirement = await session.scalar(
+            select(DemoRequirement).where(DemoRequirement.demo_case_id == conversation.demo_case_id)
+        )
+        if requirement is None:
+            raise ValueError("WhatsApp demo reply has no durable requirements row")
+
+        updates = _extract_requirement_updates(
+            payload.message.text,
+            current_step=conversation.current_step,
+            current_subject=requirement.subject,
+        )
+        changed_fields = _apply_requirement_updates(requirement, updates)
+        requirement.missing_fields = _missing_requirement_fields(requirement)
+        requirement.version += 1
+        conversation.current_step = _next_requirement_step(requirement.missing_fields)
+        conversation.safe_summary = _safe_requirement_summary(requirement)
+        conversation.version += 1
+
+        self._add_demo_reply_outbox(
+            session,
+            event=event,
+            demo_id=conversation.demo_case_id,
+            target_agent=event.source_agent,
+            service_window_expires_at=service_window_expires_at,
+            template_ref="demo.collect_requirements.v1",
+            variables=_reply_variables(requirement, changed_fields=changed_fields),
+        )
+
+    def _add_demo_reply_outbox(
+        self,
+        session: AsyncSession,
+        *,
+        event: AgentEventEnvelope,
+        demo_id: UUID,
+        target_agent: str,
+        service_window_expires_at: datetime,
+        template_ref: str,
+        variables: dict[str, str],
+    ) -> None:
+        outbox_event_id = uuid5(NAMESPACE_URL, f"nxtutors:demo-reply:{event.event_id}")
+        send_key = f"demo-reply:{event.event_id}"
         outbox_payload = {
             "event_id": str(outbox_event_id),
             "event_type": "outbound.delivery.requested.v1",
             "demo_id": str(demo_id),
             "recipient_ref": event.conversation_id,
-            "template_or_message_ref": "demo.collect_requirements.v1",
-            "variables": {"missing_fields": ",".join(missing_fields)},
+            "template_or_message_ref": template_ref,
+            "variables": variables,
             "message_category": "service",
-            "service_window_expires_at": payload.service_window.expires_at.isoformat(),
-            "send_key": f"demo-requirements:{event.event_id}",
+            "service_window_expires_at": service_window_expires_at.isoformat(),
+            "send_key": send_key,
         }
         serialized = json.dumps(outbox_payload, sort_keys=True, separators=(",", ":")).encode()
         associated_data = f"{event.tenant_id}:{event.source_agent}:{outbox_event_id}".encode()
@@ -231,8 +612,8 @@ class DefaultInboxEventHandler:
                 event_type="outbound.delivery.requested.v1",
                 schema_version="1.0",
                 tenant_id=event.tenant_id,
-                target_agent=event.source_agent,
-                idempotency_key=f"demo-requirements:{event.event_id}",
+                target_agent=target_agent,
+                idempotency_key=send_key,
                 correlation_id=event.correlation_id,
                 payload_ciphertext=self.cipher.encrypt(
                     serialized,

@@ -12,7 +12,7 @@ lint:
 	uv run ruff check src tests scripts
 
 type:
-	uv run mypy src tests
+	uv run python -m mypy src tests
 
 test:
 	uv run pytest --cov=demo_command_center --cov-report=term-missing
