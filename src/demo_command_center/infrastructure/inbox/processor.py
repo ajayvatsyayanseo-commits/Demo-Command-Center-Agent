@@ -187,6 +187,33 @@ TIME_ALIASES: dict[str, str] = {
     "weekend": "weekend",
 }
 
+CLASS_WORDS: dict[str, int] = {
+    "one": 1,
+    "first": 1,
+    "two": 2,
+    "second": 2,
+    "three": 3,
+    "third": 3,
+    "four": 4,
+    "fourth": 4,
+    "five": 5,
+    "fifth": 5,
+    "six": 6,
+    "sixth": 6,
+    "seven": 7,
+    "seventh": 7,
+    "eight": 8,
+    "eighth": 8,
+    "nine": 9,
+    "ninth": 9,
+    "ten": 10,
+    "tenth": 10,
+    "eleven": 11,
+    "eleventh": 11,
+    "twelve": 12,
+    "twelfth": 12,
+}
+
 
 class InboxEventHandler(Protocol):
     async def handle(self, event: AgentEventEnvelope, session: AsyncSession) -> None: ...
@@ -241,6 +268,36 @@ def _subject_from_free_text(text: str) -> str | None:
     return _extract_alias(text, SUBJECT_ALIASES)
 
 
+def _class_level_from_text(text: str) -> str | None:
+    """Extract a school class without confusing the following city for the class.
+
+    Real WhatsApp replies are often compact, for example ``7th class Gurgaon``.
+    The previous parser only understood ``class 7`` and therefore read
+    ``class Gurgaon`` as ``Class GURGAON``.  Keep extraction numeric/known-word
+    only so place names never become class levels.
+    """
+
+    patterns = (
+        r"\b([0-9]{1,2})(?:st|nd|rd|th)?\s*(?:class|grade|std|standard)\b",
+        r"\b(?:class|grade|std|standard)\s*([0-9]{1,2})(?:st|nd|rd|th)?\b",
+        r"\b(?:class|grade|std|standard)\s*("
+        + "|".join(sorted(CLASS_WORDS, key=len, reverse=True))
+        + r")\b",
+        r"\b("
+        + "|".join(sorted(CLASS_WORDS, key=len, reverse=True))
+        + r")\s*(?:class|grade|std|standard)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match is None:
+            continue
+        raw = match.group(1).lower()
+        value = int(raw) if raw.isdigit() else CLASS_WORDS.get(raw)
+        if value is not None and 1 <= value <= 12:
+            return f"Class {value}"
+    return None
+
+
 def _extract_requirement_updates(
     text: str | None,
     *,
@@ -259,9 +316,9 @@ def _extract_requirement_updates(
             updates["subject"] = None
             negated_current_subject = True
 
-    class_match = re.search(r"(?:class|grade|std|standard)\s*([0-9]{1,2}|[a-z]+)", normalised)
-    if class_match is not None:
-        updates["class_level"] = f"Class {class_match.group(1).upper()}"
+    class_level = _class_level_from_text(normalised)
+    if class_level is not None:
+        updates["class_level"] = class_level
 
     board = _extract_alias(normalised, BOARD_ALIASES)
     if board is not None:

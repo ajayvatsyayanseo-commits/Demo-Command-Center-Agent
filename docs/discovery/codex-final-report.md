@@ -842,3 +842,12 @@ No Git commit, amend, squash, tag, push, branch, remote, credential, or history 
 - Verified a signed tutor candidate request against `https://www.nxtutors.com/internal/api/v1/demo-command-center/tutors/candidates` returned `200` from the live website gateway when sent with a stable service User-Agent.
 - Fixed the Demo Command Center website gateway client to send `NXtutors-Demo-Command-Center/1.0 (+https://demo.nxtutors.com)` because Cloudflare returned Error 1010 for default programmatic client fingerprints.
 - Evidence: website deployment run `29736801498` succeeded; `.venv\Scripts\python.exe -m pytest tests/unit/test_website_gateway_client.py -q` passed with 2 tests.
+
+## 2026-07-20 demo-agent live-flow addendum
+
+- Fixed WhatsApp requirement parsing so messages such as `7th class Gurgaon` are interpreted as `Class 7` plus location `Gurugram`; the city is no longer mistaken for the class value.
+- Improved the Laravel website tutor projection used by the signed gateway: tutor discovery now searches `register.city`, `register.district`, and `register.state`; treats `Gurgaon` and `Gurugram` as aliases; normalizes Math/Maths/Mathematics and class/mode values; and can use safe register-table fallback course hints when a teacher has no linked course rows.
+- This keeps teacher identity and phone resolution anchored to the website `register` table. The selected tutor reference remains the website `register.id`, so subsequent tutor acceptance/phone lookup targets the chosen teacher row.
+- Evidence: `.venv\Scripts\python.exe -m ruff check src tests` passed; `.venv\Scripts\python.exe -m pytest tests\unit -q` passed with 151 tests; `php -l` passed for the Laravel adapter file in both the DCC repository and live website repository; `php artisan route:list --path=internal/api/v1/demo-command-center` shows the protected tutor/phone/profile gateway routes.
+- Local Laravel adapter PHPUnit execution is blocked on this workstation because PHP has `pdo_mysql` but not `pdo_sqlite`; the failure is `could not find driver` before any test assertions run.
+- `make check` still could not run in this Windows shell because `make` is not installed; the equivalent underlying checks were executed directly.

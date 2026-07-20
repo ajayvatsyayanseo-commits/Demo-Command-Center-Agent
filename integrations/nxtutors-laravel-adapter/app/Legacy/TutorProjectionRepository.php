@@ -13,7 +13,7 @@ final class TutorProjectionRepository
     private const REGISTER_COLUMNS = [
         'id', 'user_id', 'name', 'status', 'user_type', 'join_as', 'city', 'district',
         'state', 'pincode', 'class_type', 'experience', 'education', 'other_education',
-        'profile', 'profile_desc', 'pro_desc',
+        'for_class', 'budget', 'profile', 'profile_desc', 'pro_desc',
     ];
 
     private const COURSE_COLUMNS = [
@@ -58,7 +58,10 @@ final class TutorProjectionRepository
         if (in_array('status', $columns, true)) {
             $query->whereIn('status', ['t', '1', 'active', 'approved']);
         }
-        foreach (['city', 'district', 'state', 'class_type'] as $field) {
+        if (isset($filters['city'])) {
+            $this->applyLocationFilter($query, $columns, (string) $filters['city']);
+        }
+        foreach (['district', 'state', 'class_type'] as $field) {
             if (isset($filters[$field]) && in_array($field, $columns, true)) {
                 $query->where($field, (string) $filters[$field]);
             }
@@ -78,6 +81,9 @@ final class TutorProjectionRepository
         foreach ($registers as $register) {
             $row = (array) $register;
             $courses = $this->coursesFor($row, $courseRows);
+            if ($courses === []) {
+                $courses = $this->registerFallbackCourses($row);
+            }
             if (! $this->matchesCourseFilters($courses, $filters)) {
                 continue;
             }
@@ -306,6 +312,51 @@ final class TutorProjectionRepository
         return $courses;
     }
 
+    /** @param array<string, mixed> $register @return list<array<string, mixed>> */
+    private function registerFallbackCourses(array $register): array
+    {
+        $text = implode(' ', array_filter(array_map(
+            static fn (string $field): string => isset($register[$field]) && is_scalar($register[$field])
+                ? (string) $register[$field]
+                : '',
+            ['profile_desc', 'pro_desc', 'profile', 'education', 'other_education'],
+        )));
+        $subjects = [];
+        foreach ([
+            'mathematics' => 'Mathematics',
+            'maths' => 'Mathematics',
+            'math' => 'Mathematics',
+            'science' => 'Science',
+            'physics' => 'Physics',
+            'chemistry' => 'Chemistry',
+            'biology' => 'Biology',
+            'english' => 'English',
+            'hindi' => 'Hindi',
+            'coding' => 'Coding',
+            'programming' => 'Programming',
+            'skating' => 'Skating',
+        ] as $needle => $canonical) {
+            if (preg_match('/(?<![a-z0-9])' . preg_quote($needle, '/') . '(?![a-z0-9])/i', $text) === 1) {
+                $subjects[] = $canonical;
+            }
+        }
+
+        return [[
+            'source' => $this->schema->table('register'),
+            'source_ref' => isset($register['id']) ? (string) $register['id'] : null,
+            'boards' => [],
+            'classes' => $this->values($register, ['for_class']),
+            'subjects' => array_values(array_unique($subjects)),
+            'modes' => $this->values($register, ['class_type']),
+            'source_version' => hash('sha256', json_encode([
+                'id' => $register['id'] ?? null,
+                'for_class' => $register['for_class'] ?? null,
+                'class_type' => $register['class_type'] ?? null,
+                'profile' => $text,
+            ], JSON_THROW_ON_ERROR)),
+        ]];
+    }
+
     /** @param array<string, mixed> $register @param list<array<string, mixed>> $rows @return array<string, mixed> */
     private function reviewSummary(array $register, array $rows): array
     {
@@ -386,11 +437,11 @@ final class TutorProjectionRepository
             if (! isset($filters[$filter])) {
                 continue;
             }
-            $needle = mb_strtolower((string) $filters[$filter]);
+            $needle = $this->normalizeComparableValue((string) $filters[$filter], $filter);
             $matched = false;
             foreach ($courses as $course) {
                 foreach ($course[$field] as $value) {
-                    if (mb_strtolower((string) $value) === $needle) {
+                    if ($this->normalizeComparableValue((string) $value, $filter) === $needle) {
                         $matched = true;
                     }
                 }
@@ -401,6 +452,66 @@ final class TutorProjectionRepository
         }
 
         return true;
+    }
+
+    /** @param list<string> $columns */
+    private function applyLocationFilter(Builder $query, array $columns, string $location): void
+    {
+        $locationColumns = array_values(array_intersect(['city', 'district', 'state'], $columns));
+        if ($locationColumns === []) {
+            return;
+        }
+        $targets = $this->locationAliases($location);
+        $query->where(static function (Builder $locationQuery) use ($locationColumns, $targets): void {
+            foreach ($locationColumns as $columnIndex => $column) {
+                foreach ($targets as $targetIndex => $target) {
+                    $method = $columnIndex === 0 && $targetIndex === 0 ? 'where' : 'orWhere';
+                    $locationQuery->{$method}($column, $target);
+                }
+            }
+        });
+    }
+
+    /** @return list<string> */
+    private function locationAliases(string $location): array
+    {
+        $trimmed = trim($location);
+        $lower = mb_strtolower($trimmed);
+        $aliases = [$trimmed];
+        if (in_array($lower, ['gurgaon', 'gurugram'], true)) {
+            $aliases = array_merge($aliases, ['Gurgaon', 'Gurugram']);
+        }
+        if (in_array($lower, ['bangalore', 'bengaluru'], true)) {
+            $aliases = array_merge($aliases, ['Bangalore', 'Bengaluru']);
+        }
+
+        return array_values(array_unique(array_filter($aliases, static fn (string $value): bool => $value !== '')));
+    }
+
+    private function normalizeComparableValue(string $value, string $filter): string
+    {
+        $normalized = mb_strtolower(trim(preg_replace('/\s+/', ' ', $value) ?? $value));
+        if ($filter === 'subject') {
+            return match ($normalized) {
+                'math', 'maths', 'mathematics' => 'mathematics',
+                'computer', 'computer science' => 'computer science',
+                default => $normalized,
+            };
+        }
+        if ($filter === 'class') {
+            if (preg_match('/(?:class|grade|std|standard)?\s*([0-9]{1,2})(?:st|nd|rd|th)?/i', $normalized, $match) === 1) {
+                return (string) ((int) $match[1]);
+            }
+        }
+        if ($filter === 'mode') {
+            return match ($normalized) {
+                'online classes', 'online class' => 'online',
+                'home tuition', 'offline' => 'home',
+                default => $normalized,
+            };
+        }
+
+        return $normalized;
     }
 
     private function normalizePhone(string $phone): ?string

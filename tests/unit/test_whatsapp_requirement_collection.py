@@ -96,3 +96,25 @@ def test_subject_negation_without_replacement_asks_for_subject_again() -> None:
     assert requirement.subject is None
     assert requirement.missing_fields == ["subject"]
     assert "Which subject or skill" in _reply_variables(requirement, changed_fields=changed)["body"]
+
+
+def test_class_before_keyword_does_not_turn_city_into_class() -> None:
+    updates = _extract_requirement_updates(
+        "7th class Gurgaon maths",
+        current_step="collect_class_city",
+    )
+
+    assert updates["class_level"] == "Class 7"
+    assert updates["location_region"] == "Gurugram"
+    assert updates["subject"] == "Mathematics"
+
+
+def test_class_parser_ignores_city_after_class_keyword_without_number() -> None:
+    updates = _extract_requirement_updates(
+        "class Gurgaon maths",
+        current_step="collect_class_city",
+    )
+
+    assert "class_level" not in updates
+    assert updates["location_region"] == "Gurugram"
+    assert updates["subject"] == "Mathematics"

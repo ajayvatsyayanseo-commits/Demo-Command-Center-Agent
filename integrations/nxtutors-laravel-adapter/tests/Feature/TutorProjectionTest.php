@@ -24,6 +24,20 @@ final class TutorProjectionTest extends TestCase
         self::assertStringNotContainsString('UNAPPROVED_REVIEW_MUST_NEVER_LEAK', (string) $response->getContent());
     }
 
+    public function testTutorProjectionNormalizesClassSubjectAndLocationFilters(): void
+    {
+        $response = $this->signedRequest(
+            'GET',
+            '/internal/api/v1/demo-command-center/tutors/candidates?subject=Mathematics&class=Class%208&city=Central&mode=online&per_page=10',
+            ['demo:tutors:read'],
+        );
+
+        self::assertSame(200, $response->getStatusCode(), (string) $response->getContent());
+        $body = json_decode((string) $response->getContent(), true, 32, JSON_THROW_ON_ERROR);
+        self::assertCount(1, $body['data']['items']);
+        self::assertSame('2', $body['data']['items'][0]['tutor_ref']);
+    }
+
     public function testReadProjectionsNeverExposeRestrictedRegisterFieldsOrContact(): void
     {
         $responses = [
