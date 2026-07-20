@@ -197,6 +197,8 @@ async def test_demo_reply_uses_actor_phone_not_opaque_conversation_id() -> None:
     outbox = next(item for item in fake.added if isinstance(item, AgentOutboxEvent))
     payload = _outbox_payload(outbox, cipher)
     assert payload["recipient_ref"] == "919999999999"
+
+
 @pytest.mark.asyncio
 async def test_replacement_subject_and_timing_complete_requirements() -> None:
     cipher = _cipher()
