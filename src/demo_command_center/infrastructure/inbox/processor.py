@@ -6,13 +6,14 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
-from typing import ClassVar, Protocol
+from typing import Any, ClassVar, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from demo_command_center.api.errors.taxonomy import ServiceError
 from demo_command_center.glue.envelopes.agent_event import AgentEventEnvelope
 from demo_command_center.infrastructure.database.models import (
     AgentInboxEvent,
@@ -29,8 +30,15 @@ from demo_command_center.infrastructure.database.models import (
     PaymentOrder,
     ProviderWebhookEvent,
 )
+from demo_command_center.infrastructure.database.models import (
+    TutorCandidate as StoredTutorCandidate,
+)
 from demo_command_center.modules.demo_core.domain.identifiers import DemoId, UserId
 from demo_command_center.modules.demo_core.domain.money import Money
+from demo_command_center.modules.demo_core.ports.gateways import (
+    TutorSearchQuery,
+    WebsiteGatewayPort,
+)
 from demo_command_center.modules.paid_transition.domain.verification import (
     EvidenceSource,
     PaymentDecisionKind,
@@ -407,6 +415,147 @@ def _reply_body(requirement: DemoRequirement, *, changed_fields: frozenset[str])
     )
 
 
+def _candidate_items_from_payload(candidates: object) -> list[dict[str, Any]]:
+    if not isinstance(candidates, list):
+        return []
+    return [item for item in candidates if isinstance(item, dict)]
+
+
+def _candidate_ref(candidate: dict[str, Any]) -> str | None:
+    for key in ("tutor_ref", "register_ref", "id"):
+        value = candidate.get(key)
+        if isinstance(value, str | int) and str(value).strip():
+            return str(value).strip()
+    return None
+
+
+def _candidate_display_name(candidate: dict[str, Any], *, rank: int) -> str:
+    value = candidate.get("display_name") or candidate.get("name")
+    if isinstance(value, str) and value.strip():
+        return value.strip()[:80]
+    return f"Tutor option {rank}"
+
+
+def _candidate_location(candidate: dict[str, Any]) -> str | None:
+    location = candidate.get("location")
+    if not isinstance(location, dict):
+        return None
+    parts = [
+        str(location[key]).strip()
+        for key in ("city", "district", "state")
+        if isinstance(location.get(key), str) and str(location[key]).strip()
+    ]
+    return ", ".join(dict.fromkeys(parts)) or None
+
+
+def _candidate_review_label(candidate: dict[str, Any]) -> str | None:
+    review = candidate.get("review_summary")
+    if not isinstance(review, dict):
+        return None
+    count = review.get("approved_review_count")
+    rating = review.get("average_rating")
+    if isinstance(rating, int | float) and rating > 0:
+        suffix = f" from {count} approved review(s)" if isinstance(count, int) and count > 0 else ""
+        return f"{rating:.1f}/5{suffix}"
+    if isinstance(count, int) and count > 0:
+        return f"{count} approved review(s)"
+    return None
+
+
+def _candidate_reason_codes(candidate: dict[str, Any], *, rank: int) -> list[str]:
+    name = _candidate_display_name(candidate, rank=rank)
+    details: list[str] = []
+    experience = candidate.get("experience")
+    if isinstance(experience, str) and experience.strip():
+        details.append(f"{experience.strip()[:60]} experience")
+    education = candidate.get("education")
+    if isinstance(education, str) and education.strip():
+        details.append(education.strip()[:60])
+    location = _candidate_location(candidate)
+    if location is not None:
+        details.append(location)
+    review = _candidate_review_label(candidate)
+    if review is not None:
+        details.append(f"rating {review}")
+    details.append("availability pending teacher confirmation")
+    return [name, "; ".join(details)]
+
+
+def _candidate_name_from_row(candidate: StoredTutorCandidate) -> str:
+    if candidate.reason_codes:
+        return candidate.reason_codes[0]
+    return f"tutor option {candidate.rank}"
+
+
+def _candidate_quality_score(candidate: dict[str, Any]) -> float:
+    review = candidate.get("review_summary")
+    if isinstance(review, dict) and isinstance(review.get("average_rating"), int | float):
+        return max(0.0, min(1.0, float(review["average_rating"]) / 5.0))
+    return 0.5
+
+
+def _candidate_source_version(candidate: dict[str, Any]) -> str:
+    version = candidate.get("source_version")
+    if isinstance(version, str) and version.strip():
+        return version.strip()[:100]
+    material = json.dumps(candidate, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(material.encode()).hexdigest()
+
+
+def _shortlist_body(requirement: DemoRequirement, candidates: list[StoredTutorCandidate]) -> str:
+    summary = _safe_requirement_summary(requirement)
+    lines = [
+        f"I found potential tutor matches for {summary}.",
+        (
+            "Availability is not confirmed yet — I will ask the selected tutor first "
+            "before any Google Meet is scheduled."
+        ),
+        "",
+    ]
+    for candidate in sorted(candidates, key=lambda item: item.rank):
+        name = (
+            candidate.reason_codes[0]
+            if candidate.reason_codes
+            else f"Tutor option {candidate.rank}"
+        )
+        detail = candidate.reason_codes[1] if len(candidate.reason_codes) > 1 else "Profile matched"
+        lines.append(f"{candidate.rank}. {name} — {detail}")
+    lines.extend(
+        [
+            "",
+            (
+                "Reply with 1, 2, or 3 to choose a tutor, or type a different "
+                "timing/mode if you want to adjust."
+            ),
+        ]
+    )
+    return "\n".join(lines)
+
+
+def _no_shortlist_body(requirement: DemoRequirement) -> str:
+    summary = _safe_requirement_summary(requirement)
+    return (
+        f"I checked for {summary}, but I do not have a verified tutor match to show yet. "
+        "I am moving this to the demo team so they can confirm options safely."
+    )
+
+
+def _shortlist_unavailable_body(requirement: DemoRequirement) -> str:
+    summary = _safe_requirement_summary(requirement)
+    return (
+        f"I have the details for {summary}, but tutor search is temporarily unavailable. "
+        "I am moving this to the demo team so they can help without losing your request."
+    )
+
+
+def _selected_candidate_rank(text: str | None) -> int | None:
+    normalised = _normalise_text(text)
+    if normalised in {"1", "2", "3"}:
+        return int(normalised)
+    match = re.search(r"(?:option|tutor)\s*([1-3])", normalised)
+    return int(match.group(1)) if match is not None else None
+
+
 @dataclass(frozen=True, slots=True)
 class DefaultInboxEventHandler:
     SUPPORTED_EVENT_TYPES: ClassVar[frozenset[str]] = frozenset(
@@ -427,6 +576,9 @@ class DefaultInboxEventHandler:
     message_policy_reference: str | None = None
     welcome_template_reference: str | None = None
     welcome_message_version: str | None = None
+    website: WebsiteGatewayPort | None = None
+    shortlist_limit: int = 3
+    ranking_policy_version: str = "website-filtered-shortlist-v1"
     payment_policy_version: str = "cashfree-payment-v1"
     successful_payment_statuses: frozenset[str] = frozenset({"SUCCESS"})
     failed_payment_statuses: frozenset[str] = frozenset({"FAILED", "USER_DROPPED"})
@@ -505,17 +657,16 @@ class DefaultInboxEventHandler:
         # case first so PostgreSQL never has to rely on implicit unit-of-work ordering.
         await session.flush()
         session.add(initial_requirement)
-        session.add(
-            ConversationState(
-                tenant_id=event.tenant_id,
-                demo_case_id=demo_id,
-                conversation_id=event.conversation_id,
-                current_step=_next_requirement_step(initial_requirement.missing_fields),
-                safe_summary=_safe_requirement_summary(initial_requirement),
-                flow_version="demo-flow-v1",
-                version=1,
-            )
+        conversation = ConversationState(
+            tenant_id=event.tenant_id,
+            demo_case_id=demo_id,
+            conversation_id=event.conversation_id,
+            current_step=_next_requirement_step(initial_requirement.missing_fields),
+            safe_summary=_safe_requirement_summary(initial_requirement),
+            flow_version="demo-flow-v1",
+            version=1,
         )
+        session.add(conversation)
         for system, entity_type, external_id in (
             ("lead-intake", "lead", payload.lead_ref),
             ("nxtutors-website", "user", payload.user_ref),
@@ -560,14 +711,15 @@ class DefaultInboxEventHandler:
                 side_effects_completed=[],
             )
         )
-        self._add_demo_reply_outbox(
+        await self._advance_demo_after_requirements(
             session,
             event=event,
             demo_id=demo_id,
+            requirement=initial_requirement,
+            conversation=conversation,
             target_agent=event.source_agent,
             service_window_expires_at=payload.service_window.expires_at,
-            template_ref="demo.collect_requirements.v1",
-            variables=_reply_variables(initial_requirement, changed_fields=frozenset()),
+            changed_fields=frozenset(),
         )
 
     async def _continue_demo(
@@ -594,6 +746,7 @@ class DefaultInboxEventHandler:
         if requirement is None:
             raise ValueError("WhatsApp demo reply has no durable requirements row")
 
+        previous_step = conversation.current_step
         updates = _extract_requirement_updates(
             payload.message.text,
             current_step=conversation.current_step,
@@ -602,18 +755,296 @@ class DefaultInboxEventHandler:
         changed_fields = _apply_requirement_updates(requirement, updates)
         requirement.missing_fields = _missing_requirement_fields(requirement)
         requirement.version += 1
-        conversation.current_step = _next_requirement_step(requirement.missing_fields)
+        if (
+            previous_step in {"select_tutor_candidate", "awaiting_tutor_confirmation"}
+            and not updates
+        ):
+            conversation.current_step = previous_step
+        else:
+            conversation.current_step = _next_requirement_step(requirement.missing_fields)
         conversation.safe_summary = _safe_requirement_summary(requirement)
         conversation.version += 1
 
-        self._add_demo_reply_outbox(
+        if (
+            previous_step == "select_tutor_candidate"
+            and conversation.current_step == "select_tutor_candidate"
+        ):
+            rank = _selected_candidate_rank(payload.message.text)
+            if rank is not None:
+                selected = await session.scalar(
+                    select(StoredTutorCandidate).where(
+                        StoredTutorCandidate.demo_case_id == conversation.demo_case_id,
+                        StoredTutorCandidate.rank == rank,
+                    )
+                )
+                if selected is not None:
+                    selected.selected_at = datetime.now(UTC)
+                    await self._transition_demo_state(
+                        session,
+                        demo_id=conversation.demo_case_id,
+                        event=event,
+                        command=TransitionCommand.ACCEPT_SHORTLIST,
+                        after=DemoState.SLOT_NEGOTIATING,
+                        reason_code="TUTOR_SHORTLIST_ACCEPTED",
+                        side_effects_requested=["request_tutor_confirmation"],
+                    )
+                    conversation.current_step = "awaiting_tutor_confirmation"
+                    self._add_demo_reply_outbox(
+                        session,
+                        event=event,
+                        demo_id=conversation.demo_case_id,
+                        target_agent=event.source_agent,
+                        service_window_expires_at=service_window_expires_at,
+                        template_ref="demo.tutor_selected.v1",
+                        variables={
+                            **_reply_variables(requirement, changed_fields=frozenset()),
+                            "body": (
+                                f"Great — I selected {_candidate_name_from_row(selected)}. "
+                                "The next safe step is teacher confirmation. Once the tutor "
+                                "accepts, the Google Meet link can be created and sent to "
+                                "both sides."
+                            ),
+                        },
+                    )
+                    return
+
+        await self._advance_demo_after_requirements(
             session,
             event=event,
             demo_id=conversation.demo_case_id,
+            requirement=requirement,
+            conversation=conversation,
             target_agent=event.source_agent,
             service_window_expires_at=service_window_expires_at,
-            template_ref="demo.collect_requirements.v1",
-            variables=_reply_variables(requirement, changed_fields=changed_fields),
+            changed_fields=changed_fields,
+        )
+
+    async def _advance_demo_after_requirements(
+        self,
+        session: AsyncSession,
+        *,
+        event: AgentEventEnvelope,
+        demo_id: UUID,
+        requirement: DemoRequirement,
+        conversation: ConversationState,
+        target_agent: str,
+        service_window_expires_at: datetime,
+        changed_fields: frozenset[str],
+    ) -> None:
+        if requirement.missing_fields:
+            self._add_demo_reply_outbox(
+                session,
+                event=event,
+                demo_id=demo_id,
+                target_agent=target_agent,
+                service_window_expires_at=service_window_expires_at,
+                template_ref="demo.collect_requirements.v1",
+                variables=_reply_variables(requirement, changed_fields=changed_fields),
+            )
+            return
+
+        if conversation.current_step in {"select_tutor_candidate", "awaiting_tutor_confirmation"}:
+            self._add_demo_reply_outbox(
+                session,
+                event=event,
+                demo_id=demo_id,
+                target_agent=target_agent,
+                service_window_expires_at=service_window_expires_at,
+                template_ref="demo.tutor_shortlist.repeat.v1",
+                variables={
+                    **_reply_variables(requirement, changed_fields=changed_fields),
+                    "body": (
+                        "Please reply with one of the tutor option numbers I shared, or type a "
+                        "different timing/mode if you want to adjust the search."
+                    ),
+                },
+            )
+            return
+
+        if self.website is None:
+            self._add_demo_reply_outbox(
+                session,
+                event=event,
+                demo_id=demo_id,
+                target_agent=target_agent,
+                service_window_expires_at=service_window_expires_at,
+                template_ref="demo.collect_requirements.v1",
+                variables=_reply_variables(requirement, changed_fields=changed_fields),
+            )
+            return
+
+        try:
+            shortlist = await self._create_tutor_shortlist(session, demo_id, requirement)
+        except (ServiceError, TimeoutError, ValueError):
+            await self._transition_demo_state(
+                session,
+                demo_id=demo_id,
+                event=event,
+                command=TransitionCommand.ESCALATE_HUMAN,
+                after=DemoState.HUMAN_HANDOFF,
+                reason_code="TUTOR_SEARCH_UNAVAILABLE",
+                side_effects_requested=["human_follow_up"],
+            )
+            self._add_demo_reply_outbox(
+                session,
+                event=event,
+                demo_id=demo_id,
+                target_agent=target_agent,
+                service_window_expires_at=service_window_expires_at,
+                template_ref="demo.tutor_search_unavailable.v1",
+                variables={
+                    **_reply_variables(requirement, changed_fields=changed_fields),
+                    "body": _shortlist_unavailable_body(requirement),
+                },
+            )
+            return
+
+        if not shortlist:
+            await self._transition_demo_state(
+                session,
+                demo_id=demo_id,
+                event=event,
+                command=TransitionCommand.ESCALATE_HUMAN,
+                after=DemoState.HUMAN_HANDOFF,
+                reason_code="NO_TUTOR_SHORTLIST",
+                side_effects_requested=["human_follow_up"],
+            )
+            self._add_demo_reply_outbox(
+                session,
+                event=event,
+                demo_id=demo_id,
+                target_agent=target_agent,
+                service_window_expires_at=service_window_expires_at,
+                template_ref="demo.no_tutor_shortlist.v1",
+                variables={
+                    **_reply_variables(requirement, changed_fields=changed_fields),
+                    "body": _no_shortlist_body(requirement),
+                },
+            )
+            return
+
+        await self._transition_demo_state(
+            session,
+            demo_id=demo_id,
+            event=event,
+            command=TransitionCommand.COMPLETE_QUALIFICATION,
+            after=DemoState.TUTOR_MATCHING,
+            reason_code="REQUIREMENTS_COMPLETE",
+            side_effects_requested=["request_tutor_candidates"],
+            side_effects_completed=["website_tutor_candidates_fetched"],
+        )
+        await self._transition_demo_state(
+            session,
+            demo_id=demo_id,
+            event=event,
+            command=TransitionCommand.COMPLETE_MATCHING,
+            after=DemoState.TUTOR_SHORTLISTED,
+            reason_code="AUTHORITATIVE_TUTOR_CANDIDATES_PRESENT",
+            side_effects_requested=[],
+            side_effects_completed=["tutor_shortlist_stored"],
+        )
+        conversation.current_step = "select_tutor_candidate"
+        self._add_demo_reply_outbox(
+            session,
+            event=event,
+            demo_id=demo_id,
+            target_agent=target_agent,
+            service_window_expires_at=service_window_expires_at,
+            template_ref="demo.tutor_shortlist.v1",
+            variables={
+                **_reply_variables(requirement, changed_fields=changed_fields),
+                "body": _shortlist_body(requirement, shortlist),
+            },
+        )
+
+    async def _create_tutor_shortlist(
+        self, session: AsyncSession, demo_id: UUID, requirement: DemoRequirement
+    ) -> list[StoredTutorCandidate]:
+        if self.website is None:
+            return []
+        raw_candidates = await self.website.search_tutor_candidates(
+            TutorSearchQuery(
+                subject=requirement.subject,
+                board=requirement.board,
+                class_level=requirement.class_level,
+                mode=None if requirement.mode == "either" else requirement.mode,
+                city=requirement.location_region,
+                per_page=max(self.shortlist_limit, 3),
+            )
+        )
+        stored: list[StoredTutorCandidate] = []
+        for rank, candidate in enumerate(
+            _candidate_items_from_payload(list(raw_candidates))[: self.shortlist_limit],
+            start=1,
+        ):
+            tutor_ref = _candidate_ref(candidate)
+            if tutor_ref is None:
+                continue
+            source_version = _candidate_source_version(candidate)
+            existing = await session.scalar(
+                select(StoredTutorCandidate).where(
+                    StoredTutorCandidate.demo_case_id == demo_id,
+                    StoredTutorCandidate.website_tutor_ref == tutor_ref,
+                    StoredTutorCandidate.ranking_version == self.ranking_policy_version,
+                )
+            )
+            row = existing or StoredTutorCandidate(
+                demo_case_id=demo_id,
+                website_tutor_ref=tutor_ref,
+                ranking_version=self.ranking_policy_version,
+                rank=rank,
+                score=_candidate_quality_score(candidate),
+                hard_constraints_met=True,
+                reason_codes=[],
+                source_version=source_version,
+                source_fetched_at=datetime.now(UTC),
+            )
+            row.rank = rank
+            row.score = _candidate_quality_score(candidate)
+            row.hard_constraints_met = True
+            row.reason_codes = _candidate_reason_codes(candidate, rank=rank)
+            row.source_version = source_version
+            row.source_fetched_at = datetime.now(UTC)
+            if existing is None:
+                session.add(row)
+            stored.append(row)
+        return stored
+
+    async def _transition_demo_state(
+        self,
+        session: AsyncSession,
+        *,
+        demo_id: UUID,
+        event: AgentEventEnvelope,
+        command: TransitionCommand,
+        after: DemoState,
+        reason_code: str,
+        side_effects_requested: list[str],
+        side_effects_completed: list[str] | None = None,
+    ) -> None:
+        demo = await session.get(DemoCase, demo_id, with_for_update=True)
+        if demo is None or demo.state == after.value:
+            return
+        before = demo.state
+        demo.state = after.value
+        demo.version += 1
+        session.add(
+            DemoStateTransition(
+                demo_case_id=demo_id,
+                state_before=before,
+                state_after=after.value,
+                command=command.value,
+                actor_type="system",
+                actor_ref="demo-command-center-agent",
+                reason_code=reason_code,
+                occurred_at=event.occurred_at,
+                correlation_id=event.correlation_id,
+                idempotency_key=f"{event.idempotency_key}:{command.value}:{after.value}",
+                flow_version=demo.flow_version,
+                policy_version=self.ranking_policy_version,
+                side_effects_requested=side_effects_requested,
+                side_effects_completed=side_effects_completed or [],
+            )
         )
 
     def _add_demo_reply_outbox(

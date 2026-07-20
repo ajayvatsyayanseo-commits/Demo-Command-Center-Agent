@@ -162,21 +162,6 @@ class DependencyContainer:
                 cipher=cipher,
                 key_reference=key_reference,
             )
-            inbox_processor = DurableInboxProcessor(
-                sessions=database.sessions,
-                cipher=cipher,
-                handler=DefaultInboxEventHandler(
-                    default_timezone=settings.default_timezone,
-                    cipher=cipher,
-                    key_reference=key_reference,
-                    cashfree_environment=settings.cashfree_env or "sandbox",
-                    onboarding_policy_reference=settings.onboarding_handoff_policy_reference,
-                    message_policy_reference=settings.message_policy_reference,
-                    welcome_template_reference=settings.welcome_template_reference,
-                    welcome_message_version=settings.welcome_message_version,
-                ),
-                blocked_event_types=frozenset(blocked_event_types),
-            )
             website: NxtutorsWebsiteGateway | None = None
             website_url = settings.nxtutors_website_internal_base_url
             website_secret = settings.nxtutors_website_shared_secret.get_secret_value()
@@ -199,6 +184,22 @@ class DependencyContainer:
                     timeout_seconds=settings.nxtutors_website_timeout_seconds,
                     require_https=settings.app_env in {"staging", "prod"},
                 )
+            inbox_processor = DurableInboxProcessor(
+                sessions=database.sessions,
+                cipher=cipher,
+                handler=DefaultInboxEventHandler(
+                    default_timezone=settings.default_timezone,
+                    cipher=cipher,
+                    key_reference=key_reference,
+                    cashfree_environment=settings.cashfree_env or "sandbox",
+                    onboarding_policy_reference=settings.onboarding_handoff_policy_reference,
+                    message_policy_reference=settings.message_policy_reference,
+                    welcome_template_reference=settings.welcome_template_reference,
+                    welcome_message_version=settings.welcome_message_version,
+                    website=website,
+                ),
+                blocked_event_types=frozenset(blocked_event_types),
+            )
             lead_intake: LeadIntakeOutboundGateway | None = None
             lead_url = settings.outbound_message_gateway_base_url or settings.lead_intake_base_url
             lead_secret = settings.lead_intake_shared_secret.get_secret_value()

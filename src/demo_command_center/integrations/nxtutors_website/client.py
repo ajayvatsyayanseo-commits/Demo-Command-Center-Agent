@@ -109,7 +109,8 @@ class NxtutorsWebsiteGateway:
             target,
             scopes=("demo:tutors:read",),
         )
-        candidates = payload.get("data", [])
+        data = payload.get("data", [])
+        candidates = data.get("items", []) if isinstance(data, dict) else data
         if not isinstance(candidates, list) or not all(
             isinstance(item, dict) for item in candidates
         ):

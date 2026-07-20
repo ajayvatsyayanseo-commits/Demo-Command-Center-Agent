@@ -826,3 +826,11 @@ No Git commit, amend, squash, tag, push, branch, remote, credential, or history 
 - Fixed the Demo Command Center WhatsApp reply recipient selection so Lead Intake receives a WhatsApp-addressable actor phone when available, while conversation_id remains the durable session key.
 - Evidence: uff check src tests scripts passed; full pytest -q passed with 190 tests.
 - make check could not run in this Windows shell because make is not installed; the underlying lint and test commands were executed directly.
+
+## 2026-07-20 tutor-shortlist addendum
+
+- Wired completed WhatsApp demo requirements to the configured NXTutors website gateway so the worker fetches authoritative tutor candidates, stores durable shortlist rows, transitions the demo state to tutor matching/shortlisted, and replies with safe tutor options instead of stopping at “verify suitable tutor options.”
+- Fixed the website gateway client to accept the Laravel adapter’s paginated `data.items` candidate response shape.
+- Added regression coverage for Laravel candidate projection parsing and the requirement-complete WhatsApp shortlist path.
+- Evidence: `.venv\Scripts\python.exe -m ruff check src tests scripts` passed; `.venv\Scripts\python.exe -m pytest -q` passed with 192 tests.
+- `make check` still could not run in this Windows shell because `make` is not installed; the equivalent lint and test commands were executed directly.

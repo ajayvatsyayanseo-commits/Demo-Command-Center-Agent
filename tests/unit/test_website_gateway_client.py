@@ -7,6 +7,7 @@ import pytest
 
 from demo_command_center.integrations.http_security import InternalRequestSigner
 from demo_command_center.integrations.nxtutors_website import NxtutorsWebsiteGateway
+from demo_command_center.modules.demo_core.ports.gateways import TutorSearchQuery
 
 
 def _signer() -> InternalRequestSigner:
@@ -83,4 +84,44 @@ async def test_website_gateway_resolves_purpose_bound_phone_recipients_without_r
     assert tutor.recipient_ref == "register:2:phone"
     assert learner.recipient_ref == "register:1:phone"
     assert all("+919" not in request.content.decode() for request in requests)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_website_gateway_reads_paginated_candidate_items() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/tutors/candidates")
+        assert request.headers["X-NXTutors-Scopes"] == "demo:tutors:read"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "items": [
+                        {
+                            "tutor_ref": "2",
+                            "display_name": "Tutor Two",
+                            "availability_status": "unknown",
+                            "source_version": "version-2",
+                        }
+                    ],
+                    "page": 1,
+                    "per_page": 20,
+                    "has_more": False,
+                }
+            },
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handle))
+    gateway = NxtutorsWebsiteGateway(
+        base_url="https://website.invalid",
+        signer=_signer(),
+        timeout_seconds=2,
+        client=client,
+    )
+
+    candidates = await gateway.search_tutor_candidates(
+        TutorSearchQuery(subject="Mathematics", class_level="Class 10", city="Gurugram")
+    )
+
+    assert candidates[0]["tutor_ref"] == "2"
     await client.aclose()
