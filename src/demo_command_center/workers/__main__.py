@@ -15,6 +15,13 @@ from demo_command_center.observability.logging.redaction import configure_loggin
 
 logger = get_logger(__name__)
 
+# SQS long-poll durations for the drain loop. Short values keep WhatsApp reply
+# latency low; the idle poll stays well under the SQS max of 20s so the durable
+# inbox (filled by HTTP handoffs) is revisited within a few seconds.
+# ponytail: fixed cadence; make env-configurable if SQS request volume matters.
+WORKER_BUSY_POLL_SECONDS = 0
+WORKER_IDLE_POLL_SECONDS = 3
+
 
 async def run_worker(*, once: bool) -> int:
     settings = get_settings()
@@ -34,6 +41,7 @@ async def run_worker(*, once: bool) -> int:
         except NotImplementedError:  # Windows event loops do not expose signal handlers
             logger.debug("signal_handler_unavailable", signal=signal_name.name)
     processed = 0
+    fast_next = False
     try:
         while not stop.is_set():
             if container.inbox_processor is None:
@@ -44,7 +52,25 @@ async def run_worker(*, once: bool) -> int:
                 raise RuntimeError("durable outbox publisher is not configured")
             outbox_result = await container.outbox_publisher.publish_batch(batch_size=10)
             processed += outbox_result.published
-            messages = await queue.receive(queue_url, wait_seconds=1 if once else 20)
+            # WhatsApp handoffs and their replies are delivered through the durable
+            # inbox/outbox, which HTTP ingress fills out of band from SQS. A long SQS
+            # long-poll therefore stalls replies by up to its duration, so drain with
+            # a short poll while there is work and fall back to a brief idle poll (not
+            # the SQS max of 20s) so the inbox is revisited within a few seconds.
+            did_work = bool(
+                inbox_result.processed
+                or inbox_result.failed
+                or outbox_result.published
+                or outbox_result.failed
+            )
+            if once:
+                wait_seconds = 1
+            elif did_work or fast_next:
+                wait_seconds = WORKER_BUSY_POLL_SECONDS
+            else:
+                wait_seconds = WORKER_IDLE_POLL_SECONDS
+            messages = await queue.receive(queue_url, wait_seconds=wait_seconds)
+            fast_next = bool(messages)
             for message in messages:
                 try:
                     event = AgentEventEnvelope.model_validate(message.payload)
