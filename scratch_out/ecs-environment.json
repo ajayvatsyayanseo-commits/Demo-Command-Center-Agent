@@ -1,0 +1,378 @@
+[
+  {
+    "name": "ALLOWED_HOSTS",
+    "value": "[\"localhost\",\"testserver\"]"
+  },
+  {
+    "name": "APP_DEBUG",
+    "value": "false"
+  },
+  {
+    "name": "APP_ENV",
+    "value": "dev"
+  },
+  {
+    "name": "APP_NAME",
+    "value": "demo-command-center-agent"
+  },
+  {
+    "name": "APP_VERSION",
+    "value": "ba0b594"
+  },
+  {
+    "name": "AUDIT_HASH_KEY_REFERENCE",
+    "value": "/nxtutors/demo-command-center/dev/audit-hash-key"
+  },
+  {
+    "name": "AWS_ACCOUNT_ID",
+    "value": "249314130606"
+  },
+  {
+    "name": "AWS_REGION",
+    "value": "ap-south-1"
+  },
+  {
+    "name": "AWS_SECRETS_PREFIX",
+    "value": "/nxtutors/demo-command-center/dev"
+  },
+  {
+    "name": "CACHE_DEFAULT_TTL_SECONDS",
+    "value": "300"
+  },
+  {
+    "name": "CASHFREE_ORDER_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "CASHFREE_PAYMENT_LINK_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "CORS_ALLOWED_ORIGINS",
+    "value": "[]"
+  },
+  {
+    "name": "DB_CONNECT_TIMEOUT",
+    "value": "10"
+  },
+  {
+    "name": "DB_POOL_MAX",
+    "value": "5"
+  },
+  {
+    "name": "DB_POOL_MIN",
+    "value": "1"
+  },
+  {
+    "name": "DB_REQUIRE_TLS",
+    "value": "true"
+  },
+  {
+    "name": "DB_STATEMENT_TIMEOUT",
+    "value": "30000"
+  },
+  {
+    "name": "DEFAULT_LOCALE",
+    "value": "en-IN"
+  },
+  {
+    "name": "DEFAULT_TIMEZONE",
+    "value": "Asia/Kolkata"
+  },
+  {
+    "name": "DEMO_AUTOMATIC_DISCOUNT_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_AUTOMATIC_PAYMENT_LINK_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_COMMAND_CENTER_ENABLED",
+    "value": "true"
+  },
+  {
+    "name": "DEMO_DISCOUNTS_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_FORECASTING_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_GOOGLE_MEET_ENABLED",
+    "value": "true"
+  },
+  {
+    "name": "DEMO_NEW_BOOKINGS_PAUSED",
+    "value": "true"
+  },
+  {
+    "name": "DEMO_OBJECTION_EXTRACTION_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_OPENAI_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_OUTBOUND_PAUSED",
+    "value": "true"
+  },
+  {
+    "name": "DEMO_PAYMENTS_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_POST_CONVERSION_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_REMINDERS_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DEMO_SCHEDULING_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "DLQ_REDRIVE_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "EVALUATION_POSITIVE_OUTCOMES",
+    "value": "[]"
+  },
+  {
+    "name": "FIELD_ENCRYPTION_KEY_REFERENCE",
+    "value": "/nxtutors/demo-command-center/dev/field-encryption-key"
+  },
+  {
+    "name": "GOOGLE_CALENDAR_AUTH_MODE",
+    "value": "service-account-shared-calendar"
+  },
+  {
+    "name": "GOOGLE_CALENDAR_ID",
+    "value": "ajayvatsyayanseo@gmail.com"
+  },
+  {
+    "name": "GOOGLE_CALENDAR_SCOPES",
+    "value": "https://www.googleapis.com/auth/calendar.events"
+  },
+  {
+    "name": "GOOGLE_CREDENTIAL_SECRET_ARN",
+    "value": "arn:aws:secretsmanager:ap-south-1:249314130606:secret:/nxtutors/demo-command-center/dev/google-calendar-credentials-oHjoVR"
+  },
+  {
+    "name": "GOOGLE_MEET_ENABLED",
+    "value": "true"
+  },
+  {
+    "name": "INTERNAL_AUTH_AUDIENCE",
+    "value": "demo-command-center"
+  },
+  {
+    "name": "INTERNAL_AUTH_ISSUER",
+    "value": "nxtutors-internal"
+  },
+  {
+    "name": "INTERNAL_LEGACY_SHARED_SECRET_ENABLED",
+    "value": "true"
+  },
+  {
+    "name": "INTERNAL_SIGNING_KEY_ID",
+    "value": "dev-key"
+  },
+  {
+    "name": "LEAD_INTAKE_AUTH_MODE",
+    "value": "canonical-hmac"
+  },
+  {
+    "name": "LEAD_INTAKE_BASE_URL",
+    "value": "https://xyib3bqfi2tqm5cpyyhcxcsvi0hlpj.lambda-url.ap-south-1.on.aws"
+  },
+  {
+    "name": "LEAD_INTAKE_TIMEOUT_SECONDS",
+    "value": "10"
+  },
+  {
+    "name": "LOCK_DEFAULT_TTL_SECONDS",
+    "value": "30"
+  },
+  {
+    "name": "LOG_LEVEL",
+    "value": "INFO"
+  },
+  {
+    "name": "MAX_REQUEST_BODY_BYTES",
+    "value": "1048576"
+  },
+  {
+    "name": "MESSAGE_POLICY_REFERENCE",
+    "value": "message-policy-v1"
+  },
+  {
+    "name": "META_DIRECT_WEBHOOK_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "META_GRAPH_API_VERSION",
+    "value": "v20.0"
+  },
+  {
+    "name": "META_OUTBOUND_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "META_OUTBOUND_PAUSED",
+    "value": "true"
+  },
+  {
+    "name": "META_TEMPLATE_LANGUAGE",
+    "value": "en"
+  },
+  {
+    "name": "META_WHATSAPP_BUSINESS_ACCOUNT_ID",
+    "value": "1234787672156907"
+  },
+  {
+    "name": "META_WHATSAPP_PHONE_NUMBER_ID",
+    "value": "1008454102350764"
+  },
+  {
+    "name": "MODEL_EVALUATION_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "NXTUTORS_WEBSITE_AUTH_MODE",
+    "value": "canonical-hmac"
+  },
+  {
+    "name": "NXTUTORS_WEBSITE_BASE_URL",
+    "value": "https://www.nxtutors.com"
+  },
+  {
+    "name": "NXTUTORS_WEBSITE_INTERNAL_BASE_URL",
+    "value": "http://127.0.0.1:8000/internal/api/v1/demo-command-center"
+  },
+  {
+    "name": "NXTUTORS_WEBSITE_TIMEOUT_SECONDS",
+    "value": "5"
+  },
+  {
+    "name": "ONBOARDING_AGENT_AUTH_MODE",
+    "value": "canonical-hmac"
+  },
+  {
+    "name": "ONBOARDING_AGENT_BASE_URL",
+    "value": "https://onboarding.nxtutors.com/whatsapp/onboarding/webhook"
+  },
+  {
+    "name": "ONBOARDING_AGENT_TIMEOUT_SECONDS",
+    "value": "10"
+  },
+  {
+    "name": "ONBOARDING_HANDOFF_POLICY_REFERENCE",
+    "value": "onboarding-handoff-v1"
+  },
+  {
+    "name": "OPENAI_DAILY_BUDGET",
+    "value": "5"
+  },
+  {
+    "name": "OPENAI_DRAFTING_MODEL",
+    "value": "gpt-4o-mini"
+  },
+  {
+    "name": "OPENAI_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "OPENAI_EXTRACTION_MODEL",
+    "value": "gpt-4o-mini"
+  },
+  {
+    "name": "OPENAI_MAX_INPUT_TOKENS",
+    "value": "6000"
+  },
+  {
+    "name": "OPENAI_MAX_OUTPUT_TOKENS",
+    "value": "1200"
+  },
+  {
+    "name": "OPENAI_MAX_RETRIES",
+    "value": "2"
+  },
+  {
+    "name": "OPENAI_MODEL",
+    "value": "gpt-4o-mini"
+  },
+  {
+    "name": "OPENAI_MONTHLY_BUDGET",
+    "value": "100"
+  },
+  {
+    "name": "OPENAI_REQUEST_TIMEOUT_SECONDS",
+    "value": "30"
+  },
+  {
+    "name": "OUTBOUND_MESSAGE_GATEWAY_BASE_URL",
+    "value": "https://xyib3bqfi2tqm5cpyyhcxcsvi0hlpj.lambda-url.ap-south-1.on.aws"
+  },
+  {
+    "name": "PAYMENT_RECONCILIATION_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "PROVIDER_PROFILE",
+    "value": "real"
+  },
+  {
+    "name": "RETENTION_CLEANUP_ENABLED",
+    "value": "false"
+  },
+  {
+    "name": "SQS_ANALYTICS_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-analytics"
+  },
+  {
+    "name": "SQS_HUMAN_HANDOFF_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-human-handoff"
+  },
+  {
+    "name": "SQS_INBOUND_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-inbound"
+  },
+  {
+    "name": "SQS_MODEL_EVALUATION_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-model-evaluation"
+  },
+  {
+    "name": "SQS_OUTBOUND_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-outbound"
+  },
+  {
+    "name": "SQS_PAYMENTS_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-payments"
+  },
+  {
+    "name": "SQS_REMINDERS_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-reminders"
+  },
+  {
+    "name": "SQS_SCHEDULING_QUEUE_URL",
+    "value": "https://sqs.ap-south-1.amazonaws.com/249314130606/demo-command-center-dev-scheduling"
+  },
+  {
+    "name": "TENANT_ID",
+    "value": "nxtutors"
+  },
+  {
+    "name": "WELCOME_MESSAGE_VERSION",
+    "value": "welcome-v1"
+  },
+  {
+    "name": "WELCOME_TEMPLATE_REFERENCE",
+    "value": "paid.welcome.v1"
+  }
+]

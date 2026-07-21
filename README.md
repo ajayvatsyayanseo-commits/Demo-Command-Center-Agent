@@ -1,5 +1,7 @@
 # --------Demo Command Center Agent------
 
+with leadintake, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff.
+
 Production-oriented architecture and compileable scaffold for the NXTutors demo journey: qualification, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff.
 
 The service is a Python 3.12 FastAPI modular monolith. It owns demo lifecycle data in PostgreSQL while the existing Laravel/MySQL website remains authoritative for users, tutors, plans, orders, and subscriptions. Lead Intake remains the single public Meta WhatsApp ingress and outbound sender.
