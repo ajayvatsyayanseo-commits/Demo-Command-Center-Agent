@@ -1,6 +1,6 @@
 # --------Demo Command Center Agent------
 
------with leadintake, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff.
+-----with leadintake, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff-----
 
 Production-oriented architecture and compileable scaffold for the NXTutors demo journey: qualification, tutor matching, scheduling, reminders, outcome analysis, conversion, payment, and onboarding handoff.
 
